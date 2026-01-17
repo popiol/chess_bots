@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional
+
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright
+
+from src.web.config import BrowserConfig
+from src.web.selectors import SiteSelectors
+
+
+@dataclass
+class SessionState:
+    signed_in: bool = False
+    guest_mode: bool = False
+
+
+class ChessWebClient:
+    def __init__(self, config: BrowserConfig, selectors: SiteSelectors) -> None:
+        self._config = config
+        self._selectors = selectors
+        self._playwright = None
+        self._browser = None
+        self._context = None
+        self._page = None
+        self.state = SessionState()
+
+    def start(self) -> None:
+        self._playwright = sync_playwright().start()
+        self._browser = self._playwright.chromium.launch(
+            headless=self._config.headless, slow_mo=self._config.slow_mo_ms
+        )
+        self._context = self._browser.new_context()
+        self._page = self._context.new_page()
+        self._page.set_default_navigation_timeout(self._config.navigation_timeout_ms)
+        self._page.set_default_timeout(self._config.action_timeout_ms)
+        self._page.goto(self._config.base_url)
+
+    def close(self) -> None:
+        if self._context:
+            self._context.close()
+        if self._browser:
+            self._browser.close()
+        if self._playwright:
+            self._playwright.stop()
+        self._page = None
+
+    def sign_up(self, email: str, username: str, password: str) -> None:
+        self._click(self._selectors.auth.open_signup)
+        self._fill(self._selectors.auth.email, email)
+        self._fill(self._selectors.auth.username, username)
+        self._fill(self._selectors.auth.password, password)
+        self._click(self._selectors.auth.submit_signup)
+        self._wait_visible(self._selectors.post_login_ready)
+        self.state.signed_in = True
+        self.state.guest_mode = False
+
+    def sign_in(self, username: str, password: str) -> None:
+        self._click(self._selectors.auth.open_signin)
+        self._fill(self._selectors.auth.username, username)
+        self._fill(self._selectors.auth.password, password)
+        self._click(self._selectors.auth.submit_signin)
+        self._wait_visible(self._selectors.post_login_ready)
+        self.state.signed_in = True
+        self.state.guest_mode = False
+
+    def sign_out(self) -> None:
+        self._click(self._selectors.auth.signout)
+        self.state.signed_in = False
+
+    def play_as_guest(self) -> None:
+        self._click(self._selectors.game.play_as_guest)
+        self._wait_visible(self._selectors.guest_ready)
+        self.state.signed_in = False
+        self.state.guest_mode = True
+
+    def play_now(self) -> None:
+        self._click(self._selectors.game.play_now)
+        self._wait_visible(self._selectors.play_ready)
+
+    def _click(self, selector: str) -> None:
+        self._locator(selector).first.click()
+
+    def _fill(self, selector: str, value: str) -> None:
+        self._locator(selector).first.fill(value)
+
+    def _wait_visible(self, selector: str, timeout_ms: Optional[int] = None) -> None:
+        try:
+            self._locator(selector).first.wait_for(
+                state="visible", timeout=timeout_ms
+            )
+        except PlaywrightTimeoutError as exc:
+            raise RuntimeError(f"Timed out waiting for {selector}") from exc
+
+    def _locator(self, selector: str):
+        if selector.startswith("label="):
+            label = selector.split("label=", 1)[1].strip()
+            return self.page.get_by_label(label)
+        return self.page.locator(selector)
+
+    @property
+    def page(self):
+        if self._page is None:
+            raise RuntimeError("Browser session not started. Call start() first.")
+        return self._page
