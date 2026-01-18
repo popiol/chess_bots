@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 import random
 import time
 from dataclasses import dataclass
@@ -12,7 +14,15 @@ from src.agents.manager import AgentManager
 from src.db.repository import AgentRepository
 from src.web.factory import build_web_client
 
+LOG_DIR = Path("logs")
+
 logger = logging.getLogger(__name__)
+
+class UsernameFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not hasattr(record, "username"):
+            record.username = "-"
+        return True
 
 @dataclass(frozen=True)
 class RunnerConfig:
@@ -53,11 +63,11 @@ class AgentRunner:
 
         assert username is not None
         agent = self._manager.start_session(username)
-        logger.info("Session started username=%s", username)
+        logger.info("Session started", extra={"username": username})
         while True:
             agent.run()
             if agent.session_done:
-                logger.info("Session done username=%s", username)
+                logger.info("Session done", extra={"username": username})
                 self._manager.end_session(username)
                 return username
             time.sleep(self._config.tick_sleep_seconds)
@@ -84,14 +94,14 @@ class AgentRunner:
         if not usernames:
             return
         username = random.choice(usernames)
-        logger.info("Starting session username=%s", username)
+        logger.info("Starting session", extra={"username": username})
         self._manager.start_session(username)
 
     def _run_active_sessions(self) -> None:
         for username, agent in self._manager.list_active_sessions().items():
             agent.run()
             if agent.session_done:
-                logger.info("Ending session username=%s", username)
+                logger.info("Ending session", extra={"username": username})
                 self._manager.end_session(username)
 
     @staticmethod
@@ -107,7 +117,11 @@ class AgentRunner:
         password = self._random_password()
         email = f"{username}@playbullet.gg"
         classpath = classpath or random.choice(self._classpaths)
-        logger.info("Creating agent username=%s classpath=%s", username, classpath)
+        logger.info(
+            "Creating agent classpath=%s",
+            classpath,
+            extra={"username": username},
+        )
         self._manager.create_agent(
             username=username,
             password=password,
@@ -136,10 +150,23 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / "runner.log"
+    handler = TimedRotatingFileHandler(
+        log_path,
+        when="midnight",
+        interval=1,
+        backupCount=14,
+        encoding="utf-8",
+        utc=True,
     )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(username)s %(message)s")
+    )
+    handler.addFilter(UsernameFilter())
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
     web_client = build_web_client(base_url)
     repo = AgentRepository.from_env()
     manager = AgentManager(repo, web_client)

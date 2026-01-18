@@ -40,7 +40,7 @@ class AgentManager:
 
         agent_meta = self._repo.get_metadata_by_username(username)
         if not agent_meta:
-            logger.warning("Unknown agent username=%s", username)
+            logger.warning("Unknown agent", extra={"username": username})
             raise RuntimeError(f"Unknown agent: {username}")
 
         agent_class = self._load_agent_class(agent_meta.classpath)
@@ -57,7 +57,7 @@ class AgentManager:
         )
 
         self._active_sessions[username] = agent_instance
-        logger.info("Session started username=%s", username)
+        logger.info("Session started", extra={"username": username})
         return agent_instance
 
     def end_session(self, username: str) -> None:
@@ -68,7 +68,7 @@ class AgentManager:
         self._repo.update_session_times(
             agent.username, None, datetime.now(timezone.utc)
         )
-        logger.info("Session ended username=%s", username)
+        logger.info("Session ended", extra={"username": username})
 
     def active_session(self, username: str) -> Agent | None:
         return self._active_sessions.get(username)

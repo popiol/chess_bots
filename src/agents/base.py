@@ -52,13 +52,13 @@ class Agent(ABC):
 
     def ensure_registered(self) -> None:
         if self._registered:
-            logger.info("Already registered username=%s", self._username)
+            logger.info("Already registered", extra={"username": self._username})
             return
         logger.info(
-            "Registering username=%s email=%s password=%s",
-            self._username,
+            "Registering email=%s password=%s",
             self._email,
             self._password,
+            extra={"username": self._username},
         )
         self._web_client.sign_up(
             email=self._email,
@@ -66,25 +66,30 @@ class Agent(ABC):
             password=self._password,
         )
         self._registered = True
-        logger.info("Registered username=%s", self._username)
+        logger.info("Registered", extra={"username": self._username})
 
     def sign_in(self) -> None:
         if not self._web_client.is_sign_in_available():
-            logger.info("Sign-in not available, attempting sign-out username=%s", self._username)
+            logger.info(
+                "Sign-in not available, attempting sign-out",
+                extra={"username": self._username},
+            )
             if self._web_client.is_sign_out_available():
                 self._web_client.sign_out()
             else:
-                logger.info("Sign-out not available username=%s", self._username)
+                logger.info(
+                    "Sign-out not available", extra={"username": self._username}
+                )
         logger.info(
-            "Signing in username=%s email=%s password=%s",
-            self._username,
+            "Signing in email=%s password=%s",
             self._email,
             self._password,
+            extra={"username": self._username},
         )
         self._web_client.sign_in(username=self._username, password=self._password)
-        logger.info("Signed in username=%s", self._username)
+        logger.info("Signed in", extra={"username": self._username})
 
     def sign_out(self) -> None:
-        logger.info("Signing out username=%s", self._username)
+        logger.info("Signing out", extra={"username": self._username})
         self._web_client.sign_out()
-        logger.info("Signed out username=%s", self._username)
+        logger.info("Signed out", extra={"username": self._username})
