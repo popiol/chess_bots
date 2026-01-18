@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 from importlib import import_module
-from typing import Type
+from typing import Callable, Type
 
 from src.agents.base import Agent
 from src.db.repository import AgentRepository
@@ -13,9 +13,14 @@ from src.web.client import ChessWebClient
 logger = logging.getLogger(__name__)
 
 class AgentManager:
-    def __init__(self, repo: AgentRepository, web_client: ChessWebClient) -> None:
-        self._web_client = web_client
+    def __init__(
+        self,
+        repo: AgentRepository,
+        web_client_factory: Callable[[], ChessWebClient],
+    ) -> None:
+        self._web_client_factory = web_client_factory
         self._active_sessions: dict[str, Agent] = {}
+        self._session_clients: dict[str, ChessWebClient] = {}
         self._repo = repo
 
     def create_agent(
@@ -44,20 +49,30 @@ class AgentManager:
             raise RuntimeError(f"Unknown agent: {username}")
 
         agent_class = self._load_agent_class(agent_meta.classpath)
-        agent_instance = agent_class(
-            agent_meta.username,
-            agent_meta.password,
-            agent_meta.email,
-            agent_meta.classpath,
-            self._web_client,
-        )
-        agent_instance.load_state(agent_meta.state)
-        self._repo.update_session_times(
-            agent_meta.username, datetime.now(timezone.utc), None
-        )
+        web_client = self._web_client_factory()
+        try:
+            agent_instance = agent_class(
+                agent_meta.username,
+                agent_meta.password,
+                agent_meta.email,
+                agent_meta.classpath,
+                web_client,
+            )
+            agent_instance.load_state(agent_meta.state)
+            self._repo.update_session_times(
+                agent_meta.username, datetime.now(timezone.utc), None
+            )
+        except Exception:
+            web_client.close()
+            raise
 
         self._active_sessions[username] = agent_instance
-        logger.info("Session started", extra={"username": username})
+        self._session_clients[username] = web_client
+        logger.info(
+            "Session started class=%s",
+            agent_class.__name__,
+            extra={"username": username},
+        )
         return agent_instance
 
     def end_session(self, username: str) -> None:
@@ -68,6 +83,9 @@ class AgentManager:
         self._repo.update_session_times(
             agent.username, None, datetime.now(timezone.utc)
         )
+        web_client = self._session_clients.pop(username, None)
+        if web_client is not None:
+            web_client.close()
         logger.info("Session ended", extra={"username": username})
 
     def active_session(self, username: str) -> Agent | None:

@@ -16,20 +16,32 @@ class SessionState:
 
 
 class ChessWebClient:
-    def __init__(self, config: BrowserConfig, selectors: SiteSelectors) -> None:
+    def __init__(
+        self,
+        config: BrowserConfig,
+        selectors: SiteSelectors,
+        playwright=None,
+        browser=None,
+    ) -> None:
         self._config = config
         self._selectors = selectors
-        self._playwright = None
-        self._browser = None
+        self._playwright = playwright
+        self._browser = browser
         self._context = None
         self._page = None
+        self._owns_playwright = playwright is None
+        self._owns_browser = browser is None
         self.state = SessionState()
 
     def start(self) -> None:
-        self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(
-            headless=self._config.headless, slow_mo=self._config.slow_mo_ms
-        )
+        if self._playwright is None:
+            self._playwright = sync_playwright().start()
+            self._owns_playwright = True
+        if self._browser is None:
+            self._browser = self._playwright.chromium.launch(
+                headless=self._config.headless, slow_mo=self._config.slow_mo_ms
+            )
+            self._owns_browser = True
         self._context = self._browser.new_context()
         self._page = self._context.new_page()
         self._page.set_default_navigation_timeout(self._config.navigation_timeout_ms)
@@ -39,9 +51,9 @@ class ChessWebClient:
     def close(self) -> None:
         if self._context:
             self._context.close()
-        if self._browser:
+        if self._browser and self._owns_browser:
             self._browser.close()
-        if self._playwright:
+        if self._playwright and self._owns_playwright:
             self._playwright.stop()
         self._page = None
 
@@ -71,13 +83,40 @@ class ChessWebClient:
 
     def play_as_guest(self) -> None:
         self._click(self._selectors.game.play_as_guest)
-        self._wait_visible(self._selectors.guest_ready)
         self.state.signed_in = False
         self.state.guest_mode = True
 
     def play_now(self) -> None:
         self._click(self._selectors.game.play_now)
         self._wait_visible(self._selectors.play_ready)
+
+    def is_play_ready(self) -> bool:
+        return self._is_visible(self._selectors.play_ready)
+
+    def is_postgame_visible(self) -> bool:
+        return self._is_visible(self._selectors.game_page.postgame_panel)
+
+    def is_accept_draw_visible(self) -> bool:
+        return self._is_visible(self._selectors.game_page.accept_draw)
+
+    def select_time_control(self, index: int) -> None:
+        self._click(self._selectors.time_control_option(index))
+
+    def offer_draw(self) -> None:
+        self._click(self._selectors.game_page.offer_draw)
+
+    def resign(self) -> None:
+        self._click(self._selectors.game_page.resign)
+
+    def resign_confirm(self) -> None:
+        self._click(self._selectors.game_page.resign_confirm)
+
+    def accept_draw(self) -> None:
+        self._click(self._selectors.game_page.accept_draw)
+
+    def time_control_indices(self) -> list[int]:
+        count = self.page.locator("[data-testid^='time-control-']").count()
+        return list(range(count))
 
     def is_sign_in_available(self) -> bool:
         return self._is_visible(self._selectors.auth.open_signin)
@@ -93,9 +132,7 @@ class ChessWebClient:
 
     def _wait_visible(self, selector: str, timeout_ms: int | None = None) -> None:
         try:
-            self._locator(selector).first.wait_for(
-                state="visible", timeout=timeout_ms
-            )
+            self._locator(selector).first.wait_for(state="visible", timeout=timeout_ms)
         except PlaywrightTimeoutError as exc:
             raise RuntimeError(f"Timed out waiting for {selector}") from exc
 

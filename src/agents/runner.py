@@ -2,21 +2,24 @@ from __future__ import annotations
 
 import argparse
 import logging
-from logging.handlers import TimedRotatingFileHandler
-from pathlib import Path
 import random
 import time
 from dataclasses import dataclass
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
 
 from src.agents.manager import AgentManager
 from src.db.repository import AgentRepository
-from src.web.factory import build_web_client
+from src.web.config import BrowserConfig
+from src.web.factory import WebClientFactory
+from src.web.selectors import site_selectors
 
 LOG_DIR = Path("logs")
 
 logger = logging.getLogger(__name__)
+
 
 class UsernameFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -24,10 +27,11 @@ class UsernameFilter(logging.Filter):
             record.username = "-"
         return True
 
+
 @dataclass(frozen=True)
 class RunnerConfig:
-    create_probability: float = 1 / 3600
-    start_probability: float = 1 / 300
+    create_probability: float = 1 / 60  # 1 / 3600
+    start_probability: float = 1  # 1 / 300
     tick_sleep_seconds: float = 1.0
     max_active_sessions: int = 10
 
@@ -93,7 +97,11 @@ class AgentRunner:
         usernames = self._manager.list_known_agents()
         if not usernames:
             return
-        username = random.choice(usernames)
+        active_usernames = set(self._manager.list_active_sessions().keys())
+        candidates = [name for name in usernames if name not in active_usernames]
+        if not candidates:
+            return
+        username = random.choice(candidates)
         logger.info("Starting session", extra={"username": username})
         self._manager.start_session(username)
 
@@ -134,7 +142,8 @@ class AgentRunner:
 
 def main() -> None:
     classpath_map = {
-        "SimpleAuthAgent": "src.agents.simple_auth_agent.SimpleAuthAgent",
+        # "SimpleAuthAgent": "src.agents.simple_auth_agent.SimpleAuthAgent",
+        "GuestAgent": "src.agents.guest_agent.GuestAgent",
     }
     available_classnames = list(classpath_map.keys())
     base_url = "https://playbullet.gg"
@@ -160,16 +169,17 @@ def main() -> None:
         encoding="utf-8",
         utc=True,
     )
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(username)s %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(username)s %(message)s"))
     handler.addFilter(UsernameFilter())
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
     root_logger.addHandler(handler)
-    web_client = build_web_client(base_url)
     repo = AgentRepository.from_env()
-    manager = AgentManager(repo, web_client)
+    web_factory = WebClientFactory(
+        BrowserConfig(base_url=base_url),
+        site_selectors(),
+    )
+    manager = AgentManager(repo, web_factory.create_client)
     runner = AgentRunner(
         manager,
         classpaths=list(classpath_map.values()),
@@ -184,7 +194,7 @@ def main() -> None:
         else:
             runner.main_loop()
     finally:
-        web_client.close()
+        web_factory.close()
 
 
 if __name__ == "__main__":

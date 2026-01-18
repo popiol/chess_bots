@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 import logging
+from abc import ABC, abstractmethod
 
 from src.web.client import ChessWebClient
 
 logger = logging.getLogger(__name__)
+
 
 class Agent(ABC):
     def __init__(
@@ -80,12 +81,7 @@ class Agent(ABC):
                 logger.info(
                     "Sign-out not available", extra={"username": self._username}
                 )
-        logger.info(
-            "Signing in email=%s password=%s",
-            self._email,
-            self._password,
-            extra={"username": self._username},
-        )
+        logger.info("Signing in", extra={"username": self._username})
         self._web_client.sign_in(username=self._username, password=self._password)
         logger.info("Signed in", extra={"username": self._username})
 
