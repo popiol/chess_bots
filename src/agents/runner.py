@@ -144,8 +144,6 @@ class AgentRunner:
 
 def main() -> None:
     classpath_map = {
-        # "SimpleAuthAgent": "src.agents.simple_auth_agent.SimpleAuthAgent",
-        # "GuestAgent": "src.agents.guest_agent.GuestAgent",
         "CustomizableAgent": "src.agents.customizable_agent.CustomizableAgent",
     }
     available_classnames = list(classpath_map.keys())
