@@ -8,6 +8,7 @@ class AuthSelectors:
     email: str
     username: str
     password: str
+    confirm_password: str
     submit_signup: str
     submit_signin: str
     signout: str
@@ -125,6 +126,7 @@ def site_selectors() -> SiteSelectors:
             email="label=Email",
             username="label=Username",
             password="label=Password",
+            confirm_password="label=Confirm password",
             submit_signup="css=form button",
             submit_signin="css=form button",
             signout="css=[data-testid='header-signout']",

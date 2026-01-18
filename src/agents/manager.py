@@ -1,26 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from importlib import import_module
 from typing import Type
 
 from src.agents.base import Agent
-from src.db.config import PostgresConfig
-from src.db.connection import get_sessionmaker
-from src.db.repository import (
-    list_agent_usernames,
-    update_agent_state,
-    update_session_times,
-)
+from src.db.repository import AgentRepository
 from src.db.schema import AgentMetadata
 from src.web.client import ChessWebClient
 
+logger = logging.getLogger(__name__)
 
 class AgentManager:
-    def __init__(self, db_config: PostgresConfig, web_client: ChessWebClient) -> None:
-        self._db_config = db_config
+    def __init__(self, repo: AgentRepository, web_client: ChessWebClient) -> None:
         self._web_client = web_client
         self._active_sessions: dict[str, Agent] = {}
+        self._repo = repo
 
     def create_agent(
         self,
@@ -30,58 +26,49 @@ class AgentManager:
         classpath: str,
         state: dict,
     ) -> AgentMetadata:
-        SessionLocal = get_sessionmaker(self._db_config)
-        with SessionLocal() as session:
-            agent = AgentMetadata(
-                username=username,
-                password=password,
-                email=email,
-                classpath=classpath,
-                state=state,
-            )
-            session.add(agent)
-            session.commit()
-            session.refresh(agent)
-            return agent
+        return self._repo.create_agent_metadata(
+            username=username,
+            password=password,
+            email=email,
+            classpath=classpath,
+            state=state,
+        )
 
     def start_session(self, username: str) -> Agent:
         if username in self._active_sessions:
             return self._active_sessions[username]
 
-        SessionLocal = get_sessionmaker(self._db_config)
-        with SessionLocal() as session:
-            agent_meta = (
-                session.query(AgentMetadata)
-                .filter(AgentMetadata.username == username)
-                .one_or_none()
-            )
-            if not agent_meta:
-                raise RuntimeError(f"Unknown agent: {username}")
+        agent_meta = self._repo.get_metadata_by_username(username)
+        if not agent_meta:
+            logger.warning("Unknown agent username=%s", username)
+            raise RuntimeError(f"Unknown agent: {username}")
 
-            agent_class = self._load_agent_class(agent_meta.classpath)
-            agent_instance = agent_class(
-                agent_meta.username,
-                agent_meta.password,
-                agent_meta.email,
-                agent_meta.classpath,
-                self._web_client,
-            )
-            agent_instance.load_state(agent_meta.state)
-            update_session_times(
-                self._db_config, agent_meta.username, datetime.now(timezone.utc), None
-            )
+        agent_class = self._load_agent_class(agent_meta.classpath)
+        agent_instance = agent_class(
+            agent_meta.username,
+            agent_meta.password,
+            agent_meta.email,
+            agent_meta.classpath,
+            self._web_client,
+        )
+        agent_instance.load_state(agent_meta.state)
+        self._repo.update_session_times(
+            agent_meta.username, datetime.now(timezone.utc), None
+        )
 
-            self._active_sessions[username] = agent_instance
-            return agent_instance
+        self._active_sessions[username] = agent_instance
+        logger.info("Session started username=%s", username)
+        return agent_instance
 
     def end_session(self, username: str) -> None:
         agent = self._active_sessions.pop(username, None)
         if not agent:
             return
-        update_agent_state(self._db_config, agent.username, agent.snapshot_state())
-        update_session_times(
-            self._db_config, agent.username, None, datetime.now(timezone.utc)
+        self._repo.update_agent_state(agent.username, agent.snapshot_state())
+        self._repo.update_session_times(
+            agent.username, None, datetime.now(timezone.utc)
         )
+        logger.info("Session ended username=%s", username)
 
     def active_session(self, username: str) -> Agent | None:
         return self._active_sessions.get(username)
@@ -90,7 +77,7 @@ class AgentManager:
         return dict(self._active_sessions)
 
     def list_known_agents(self) -> list[str]:
-        return list_agent_usernames(self._db_config)
+        return self._repo.list_agent_usernames()
 
     @staticmethod
     def _load_agent_class(classpath: str) -> Type[Agent]:

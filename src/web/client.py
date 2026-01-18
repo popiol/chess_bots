@@ -50,6 +50,7 @@ class ChessWebClient:
         self._fill(self._selectors.auth.email, email)
         self._fill(self._selectors.auth.username, username)
         self._fill(self._selectors.auth.password, password)
+        self._fill(self._selectors.auth.confirm_password, password)
         self._click(self._selectors.auth.submit_signup)
         self._wait_visible(self._selectors.post_login_ready)
         self.state.signed_in = True
@@ -78,6 +79,12 @@ class ChessWebClient:
         self._click(self._selectors.game.play_now)
         self._wait_visible(self._selectors.play_ready)
 
+    def is_sign_in_available(self) -> bool:
+        return self._is_visible(self._selectors.auth.open_signin)
+
+    def is_sign_out_available(self) -> bool:
+        return self._is_visible(self._selectors.auth.signout)
+
     def _click(self, selector: str) -> None:
         self._locator(selector).first.click()
 
@@ -91,6 +98,12 @@ class ChessWebClient:
             )
         except PlaywrightTimeoutError as exc:
             raise RuntimeError(f"Timed out waiting for {selector}") from exc
+
+    def _is_visible(self, selector: str) -> bool:
+        try:
+            return self._locator(selector).first.is_visible()
+        except PlaywrightTimeoutError:
+            return False
 
     def _locator(self, selector: str):
         if selector.startswith("label="):
