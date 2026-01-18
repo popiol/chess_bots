@@ -66,7 +66,9 @@ class GuestAgent(Agent):
                             "accept_draw" if random.random() < 0.5 else "resign"
                         )
                     else:
-                        self._decision = "offer_draw" if random.random() < 0.5 else "resign"
+                        self._decision = (
+                            "offer_draw" if random.random() < 0.5 else "resign"
+                        )
                     return
 
                 if self._decision == "accept_draw":

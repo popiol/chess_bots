@@ -86,6 +86,9 @@ class ChessWebClient:
         self.state.signed_in = False
         self.state.guest_mode = True
 
+    def queue_play_now(self) -> None:
+        self._click(self._selectors.game.play_now)
+
     def play_now(self) -> None:
         self._click(self._selectors.game.play_now)
         self._wait_visible(self._selectors.play_ready)
@@ -131,10 +134,7 @@ class ChessWebClient:
         self._locator(selector).first.fill(value)
 
     def _wait_visible(self, selector: str, timeout_ms: int | None = None) -> None:
-        try:
-            self._locator(selector).first.wait_for(state="visible", timeout=timeout_ms)
-        except PlaywrightTimeoutError as exc:
-            raise RuntimeError(f"Timed out waiting for {selector}") from exc
+        self._locator(selector).first.wait_for(state="visible", timeout=timeout_ms)
 
     def _is_visible(self, selector: str) -> bool:
         try:
