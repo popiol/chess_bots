@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -85,7 +84,7 @@ class ChessWebClient:
     def _fill(self, selector: str, value: str) -> None:
         self._locator(selector).first.fill(value)
 
-    def _wait_visible(self, selector: str, timeout_ms: Optional[int] = None) -> None:
+    def _wait_visible(self, selector: str, timeout_ms: int | None = None) -> None:
         try:
             self._locator(selector).first.wait_for(
                 state="visible", timeout=timeout_ms

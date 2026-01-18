@@ -30,7 +30,7 @@ class AgentRunner:
             raise ValueError("At least one classpath is required.")
         self._config = config or RunnerConfig()
 
-    def run_forever(self) -> None:
+    def main_loop(self) -> None:
         while True:
             self._maybe_create_agent()
             self._maybe_start_session()
@@ -40,23 +40,30 @@ class AgentRunner:
     def _maybe_create_agent(self) -> None:
         if random.random() >= self._config.create_probability:
             return
-        if len(self._manager.list_active_sessions()) >= self._config.max_active_sessions:
+        if (
+            len(self._manager.list_active_sessions())
+            >= self._config.max_active_sessions
+        ):
             return
         username = self._random_username()
         password = self._random_password()
-        email = f"{username}@example.com"
+        email = f"{username}@playbullet.gg"
         classpath = random.choice(self._classpaths)
         self._manager.create_agent(
             username=username,
             password=password,
             email=email,
             classpath=classpath,
+            state={},
         )
 
     def _maybe_start_session(self) -> None:
         if random.random() >= self._config.start_probability:
             return
-        if len(self._manager.list_active_sessions()) >= self._config.max_active_sessions:
+        if (
+            len(self._manager.list_active_sessions())
+            >= self._config.max_active_sessions
+        ):
             return
         usernames = self._manager.list_known_agents()
         if not usernames:
@@ -65,8 +72,10 @@ class AgentRunner:
         self._manager.start_session(username)
 
     def _run_active_sessions(self) -> None:
-        for agent in self._manager.list_active_sessions().values():
+        for username, agent in self._manager.list_active_sessions().items():
             agent.run()
+            if agent.session_done:
+                self._manager.end_session(username)
 
     @staticmethod
     def _random_username() -> str:

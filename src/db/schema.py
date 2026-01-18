@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import JSON, DateTime, Integer, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -20,11 +19,11 @@ class AgentMetadata(Base):
     password: Mapped[str] = mapped_column(Text, nullable=False)
     email: Mapped[str] = mapped_column(Text, nullable=False)
     classpath: Mapped[str] = mapped_column(Text, nullable=False)
-    state: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    last_session_start: Mapped[Optional[datetime]] = mapped_column(
+    state: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    last_session_start: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    last_session_end: Mapped[Optional[datetime]] = mapped_column(
+    last_session_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

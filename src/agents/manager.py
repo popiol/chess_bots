@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from importlib import import_module
-from typing import Dict, Optional, Type
+from typing import Type
 
 from src.agents.base import Agent
 from src.db.config import PostgresConfig
@@ -13,12 +13,14 @@ from src.db.repository import (
     update_session_times,
 )
 from src.db.schema import AgentMetadata
+from src.web.client import ChessWebClient
 
 
 class AgentManager:
-    def __init__(self, db_config: PostgresConfig) -> None:
+    def __init__(self, db_config: PostgresConfig, web_client: ChessWebClient) -> None:
         self._db_config = db_config
-        self._active_sessions: Dict[str, Agent] = {}
+        self._web_client = web_client
+        self._active_sessions: dict[str, Agent] = {}
 
     def create_agent(
         self,
@@ -26,7 +28,7 @@ class AgentManager:
         password: str,
         email: str,
         classpath: str,
-        state: Optional[dict] = None,
+        state: dict,
     ) -> AgentMetadata:
         SessionLocal = get_sessionmaker(self._db_config)
         with SessionLocal() as session:
@@ -62,9 +64,12 @@ class AgentManager:
                 agent_meta.password,
                 agent_meta.email,
                 agent_meta.classpath,
+                self._web_client,
             )
             agent_instance.load_state(agent_meta.state)
-            update_session_times(self._db_config, agent_meta.username, datetime.now(timezone.utc), None)
+            update_session_times(
+                self._db_config, agent_meta.username, datetime.now(timezone.utc), None
+            )
 
             self._active_sessions[username] = agent_instance
             return agent_instance
@@ -74,12 +79,14 @@ class AgentManager:
         if not agent:
             return
         update_agent_state(self._db_config, agent.username, agent.snapshot_state())
-        update_session_times(self._db_config, agent.username, None, datetime.now(timezone.utc))
+        update_session_times(
+            self._db_config, agent.username, None, datetime.now(timezone.utc)
+        )
 
-    def active_session(self, username: str) -> Optional[Agent]:
+    def active_session(self, username: str) -> Agent | None:
         return self._active_sessions.get(username)
 
-    def list_active_sessions(self) -> Dict[str, Agent]:
+    def list_active_sessions(self) -> dict[str, Agent]:
         return dict(self._active_sessions)
 
     def list_known_agents(self) -> list[str]:
