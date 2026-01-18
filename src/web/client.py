@@ -117,6 +117,33 @@ class ChessWebClient:
     def accept_draw(self) -> None:
         self._click(self._selectors.game_page.accept_draw)
 
+    def make_move(self, from_square: str, to_square: str) -> None:
+        """Make a chess move by clicking from_square then to_square.
+
+        Args:
+            from_square: Source square in algebraic notation (e.g. 'e2')
+            to_square: Destination square in algebraic notation (e.g. 'e4')
+        """
+        self._click(self._selectors.square(from_square))
+        self._click(self._selectors.square(to_square))
+
+    def click_square(self, square: str) -> None:
+        """Click a specific square on the chess board.
+
+        Args:
+            square: Square in algebraic notation (e.g. 'e4', 'a1')
+        """
+        self._click(self._selectors.square(square))
+
+    def get_current_fen(self) -> str:
+        """Get the current FEN (Forsyth-Edwards Notation) of the game position.
+
+        Returns:
+            The FEN string representing the current board state.
+        """
+        element = self._locator(self._selectors.game_page.game_fen).first
+        return element.inner_text()
+
     def time_control_indices(self) -> list[int]:
         count = self.page.locator("[data-testid^='time-control-']").count()
         return list(range(count))

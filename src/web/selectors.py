@@ -50,6 +50,8 @@ class FeedbackSelectors:
 @dataclass(frozen=True)
 class GamePageSelectors:
     chess_board: str
+    game_fen: str
+    square_by_coord: str
     resign: str
     resign_confirm: str
     resign_cancel: str
@@ -98,6 +100,10 @@ class SiteSelectors:
 
     def time_control_option(self, index: int) -> str:
         return f"css=[data-testid='time-control-{index}']"
+
+    def square(self, coord: str) -> str:
+        """Get selector for a chess square (e.g. 'e4', 'a1')."""
+        return f"css=[data-square='{coord}']"
 
     def feedback_category(self, value: str) -> str:
         return f"css=[data-testid='feedback-category-{value}']"
@@ -149,6 +155,8 @@ def site_selectors() -> SiteSelectors:
         ),
         game_page=GamePageSelectors(
             chess_board="css=[data-testid='chess-board']",
+            game_fen="css=[data-testid='game-fen']",
+            square_by_coord="css=[data-square='<coord>']",
             resign="css=[data-testid='resign']",
             resign_confirm="css=[data-testid='resign-confirm']",
             resign_cancel="css=[data-testid='resign-cancel']",

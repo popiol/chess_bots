@@ -32,6 +32,8 @@ Use `data-testid` where available. When `data-testid` is not present, use the pr
 
 ## Game page / Replay page
 - Chess board: `[data-testid="chess-board"]`
+- Current FEN (hidden): `[data-testid="game-fen"]`
+- Squares: `[data-square="<file><rank>"]` (e.g. `[data-square="e4"]`)
 - Resign: `[data-testid="resign"]`
 - Resign confirm: `[data-testid="resign-confirm"]`
 - Resign cancel: `[data-testid="resign-cancel"]`

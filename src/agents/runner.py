@@ -145,6 +145,7 @@ class AgentRunner:
 def main() -> None:
     classpath_map = {
         "CustomizableAgent": "src.agents.customizable_agent.CustomizableAgent",
+        "RandomMoveAgent": "src.agents.random_move_agent.RandomMoveAgent",
     }
     available_classnames = list(classpath_map.keys())
     base_url = "https://playbullet.gg"
