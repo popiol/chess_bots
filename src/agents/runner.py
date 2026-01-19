@@ -30,8 +30,8 @@ class UsernameFilter(logging.Filter):
 
 @dataclass(frozen=True)
 class RunnerConfig:
-    create_probability: float = 1 / 3600
-    start_probability: float = 1 / 60
+    create_probability: float = 1 / 60  # 1 / 3600
+    start_probability: float = 1  # 1 / 60
     tick_sleep_seconds: float = 1.0
     max_active_sessions: int = 30
 
@@ -144,8 +144,7 @@ class AgentRunner:
 
 def main() -> None:
     classpath_map = {
-        "CustomizableAgent": "src.agents.customizable_agent.CustomizableAgent",
-        "RandomMoveAgent": "src.agents.random_move_agent.RandomMoveAgent",
+        "PlayableAgent": "src.agents.playable_agent.PlayableAgent",
     }
     available_classnames = list(classpath_map.keys())
     base_url = "https://playbullet.gg"

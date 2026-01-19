@@ -144,6 +144,52 @@ class ChessWebClient:
         element = self._locator(self._selectors.game_page.game_fen).first
         return element.inner_text()
 
+    def is_current_user_turn(self) -> bool:
+        """Check if it's the current user's turn to move.
+
+        In live games, the bottom PlayerInfo is the current user.
+        This checks if the active player indicator is on the bottom panel.
+
+        Returns:
+            True if it's the current user's turn, False otherwise.
+        """
+        try:
+            # Get all player info panels
+            all_panels = self.page.locator("css=.player-info").all()
+            if len(all_panels) < 2:
+                return False
+
+            # Bottom panel is the current user (last in DOM order)
+            bottom_panel = all_panels[-1]
+
+            # Check if the bottom panel has the active class
+            class_attr = bottom_panel.get_attribute("class") or ""
+            return "player-info--active" in class_attr
+        except Exception:
+            return False
+
+    def get_player_color(self) -> str | None:
+        """Determine if the current user is playing white or black.
+
+        Checks the first square on the board. If it's a8, user plays white.
+        If it's h1, user plays black.
+
+        Returns:
+            'white' if playing as white, 'black' if playing as black, None if cannot determine.
+        """
+        try:
+            # Get the first square element in the DOM
+            first_square = self.page.locator("css=[data-square]").first
+            square_coord = first_square.get_attribute("data-square")
+
+            if square_coord == "a8":
+                return "white"
+            elif square_coord == "h1":
+                return "black"
+            return None
+        except Exception:
+            return None
+
     def time_control_indices(self) -> list[int]:
         count = self.page.locator("[data-testid^='time-control-']").count()
         return list(range(count))

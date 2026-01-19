@@ -51,6 +51,7 @@ class FeedbackSelectors:
 class GamePageSelectors:
     chess_board: str
     game_fen: str
+    active_player: str
     square_by_coord: str
     resign: str
     resign_confirm: str
@@ -156,6 +157,7 @@ def site_selectors() -> SiteSelectors:
         game_page=GamePageSelectors(
             chess_board="css=[data-testid='chess-board']",
             game_fen="css=[data-testid='game-fen']",
+            active_player="css=.player-info--active",
             square_by_coord="css=[data-square='<coord>']",
             resign="css=[data-testid='resign']",
             resign_confirm="css=[data-testid='resign-confirm']",

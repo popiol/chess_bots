@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy.orm import sessionmaker
+
 from src.db.config import PostgresConfig
-from src.db.connection import get_sessionmaker
+from src.db.connection import get_engine
 from src.db.schema import AgentMetadata
 from src.utils.env import load_env
 
@@ -22,6 +24,10 @@ class AgentRecord:
 class AgentRepository:
     def __init__(self, config: PostgresConfig) -> None:
         self._config = config
+        self._engine = get_engine(config)
+        self._sessionmaker = sessionmaker(
+            bind=self._engine, autoflush=False, expire_on_commit=False, future=True
+        )
 
     @staticmethod
     def from_env() -> "AgentRepository":
@@ -36,8 +42,7 @@ class AgentRepository:
         classpath: str,
         state: dict,
     ) -> AgentMetadata:
-        SessionLocal = get_sessionmaker(self._config)
-        with SessionLocal() as session:
+        with self._sessionmaker() as session:
             agent = AgentMetadata(
                 username=username,
                 password=password,
@@ -51,8 +56,7 @@ class AgentRepository:
             return agent
 
     def create_agent(self, record: AgentRecord) -> int:
-        SessionLocal = get_sessionmaker(self._config)
-        with SessionLocal() as session:
+        with self._sessionmaker() as session:
             agent = AgentMetadata(
                 username=record.username,
                 password=record.password,
@@ -68,8 +72,7 @@ class AgentRepository:
             return agent.id
 
     def get_metadata_by_username(self, username: str) -> AgentMetadata | None:
-        SessionLocal = get_sessionmaker(self._config)
-        with SessionLocal() as session:
+        with self._sessionmaker() as session:
             return (
                 session.query(AgentMetadata)
                 .filter(AgentMetadata.username == username)
@@ -77,8 +80,7 @@ class AgentRepository:
             )
 
     def get_agent_by_username(self, username: str) -> AgentRecord | None:
-        SessionLocal = get_sessionmaker(self._config)
-        with SessionLocal() as session:
+        with self._sessionmaker() as session:
             agent = (
                 session.query(AgentMetadata)
                 .filter(AgentMetadata.username == username)
@@ -98,14 +100,12 @@ class AgentRepository:
             )
 
     def list_agent_usernames(self) -> list[str]:
-        SessionLocal = get_sessionmaker(self._config)
-        with SessionLocal() as session:
+        with self._sessionmaker() as session:
             rows = session.query(AgentMetadata.username).all()
             return [row[0] for row in rows]
 
     def update_agent_state(self, username: str, state: dict) -> None:
-        SessionLocal = get_sessionmaker(self._config)
-        with SessionLocal() as session:
+        with self._sessionmaker() as session:
             agent = (
                 session.query(AgentMetadata)
                 .filter(AgentMetadata.username == username)
@@ -122,8 +122,7 @@ class AgentRepository:
         last_session_start: datetime | None,
         last_session_end: datetime | None,
     ) -> None:
-        SessionLocal = get_sessionmaker(self._config)
-        with SessionLocal() as session:
+        with self._sessionmaker() as session:
             agent = (
                 session.query(AgentMetadata)
                 .filter(AgentMetadata.username == username)

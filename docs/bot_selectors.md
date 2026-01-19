@@ -34,6 +34,9 @@ Use `data-testid` where available. When `data-testid` is not present, use the pr
 - Chess board: `[data-testid="chess-board"]`
 - Current FEN (hidden): `[data-testid="game-fen"]`
 - Squares: `[data-square="<file><rank>"]` (e.g. `[data-square="e4"]`)
+- Active player panel: `.player-info--active`
+- Active clock: `.player-info-clock--active`
+- Current user (live game): the bottom PlayerInfo is the current user.
 - Resign: `[data-testid="resign"]`
 - Resign confirm: `[data-testid="resign-confirm"]`
 - Resign cancel: `[data-testid="resign-cancel"]`
