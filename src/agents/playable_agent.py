@@ -22,6 +22,9 @@ class PlayableAgent(CustomizableAgent):
         self._last_from_square: str | None = None
         self._last_to_square: str | None = None
         self._player_color: str | None = None
+        self._resign_threshold: float = -0.99
+        self._draw_threshold: float = 0.01
+        self._last_decisive: float | None = None
 
     def _step_playing(self) -> None:
         if self._web_client.is_postgame_visible():
@@ -70,39 +73,93 @@ class PlayableAgent(CustomizableAgent):
                 )
             self._fen_before_move = None
 
-        # Check if it's our turn
+        # Check if we should offer draw based on last move's decisive value (on opponent's turn)
         if not self._web_client.is_current_user_turn():
-            return
-
-        # Get squares with our pieces
-        our_squares = self._get_our_piece_squares(current_fen)
-        if not our_squares:
-            logger.warning(
-                "No pieces found for our color", extra={"username": self.username}
-            )
-            return
-
-        # Make random move
-        try:
-            from_square = random.choice(our_squares)
-            to_square = random.choice(ALL_SQUARES)
-            if from_square != to_square:
+            if (
+                self._last_decisive is not None
+                and self._last_decisive < self._draw_threshold
+            ):
                 logger.info(
-                    "Attempting move %s -> %s",
-                    from_square,
-                    to_square,
+                    "Position decisive %.2f below threshold %.2f, offering draw on opponent's turn",
+                    self._last_decisive,
+                    self._draw_threshold,
                     extra={"username": self.username},
                 )
-                self._fen_before_move = current_fen
-                self._last_from_square = from_square
-                self._last_to_square = to_square
-                self._web_client.make_move(from_square, to_square)
+                self._decision = "offer_draw"
+                self._last_decisive = None
+            return
+
+        # It's our turn - decide which move to make
+        move = self._decide_move(current_fen)
+        if move is None:
+            return
+
+        from_square, to_square, evaluation, decisive = move
+
+        # Check if position is too bad and we should resign
+        if evaluation < self._resign_threshold:
+            logger.info(
+                "Position evaluation %.2f below threshold %.2f, resigning",
+                evaluation,
+                self._resign_threshold,
+                extra={"username": self.username},
+            )
+            self._decision = "resign"
+            return
+
+        # Store decisive value to potentially offer draw on opponent's turn
+        self._last_decisive = decisive
+
+        # Make move
+        try:
+            logger.info(
+                "Attempting move %s -> %s",
+                from_square,
+                to_square,
+                extra={"username": self.username},
+            )
+            self._fen_before_move = current_fen
+            self._last_from_square = from_square
+            self._last_to_square = to_square
+            self._web_client.make_move(from_square, to_square)
         except PlaywrightTimeoutError:
             logger.warning(
                 "Move timeout (likely illegal), trying again",
                 extra={"username": self.username},
             )
             self._fen_before_move = None
+
+    def _decide_move(self, current_fen: str) -> tuple[str, str, float, float] | None:
+        """Decide which move to make.
+
+        Args:
+            current_fen: Current FEN position
+
+        Returns:
+            Tuple of (from_square, to_square, evaluation, decisive) or None if no move chosen.
+            - evaluation: float from -1 (bad for us) to 1 (good for us)
+            - decisive: float from 0 (drawish) to 1 (sharp/tactical, likely decisive result)
+        """
+        # Get squares with our pieces
+        our_squares = self._get_our_piece_squares(current_fen)
+        if not our_squares:
+            logger.warning(
+                "No pieces found for our color", extra={"username": self.username}
+            )
+            return None
+
+        from_square = random.choice(our_squares)
+        to_square = random.choice(ALL_SQUARES)
+        if from_square == to_square:
+            return None
+
+        # Random evaluation between -1 and 1
+        evaluation = random.uniform(-1.0, 1.0)
+
+        # Random decisive result chances between 0 and 1
+        decisive = random.uniform(0.0, 1.0)
+
+        return (from_square, to_square, evaluation, decisive)
 
     def _get_our_piece_squares(self, fen: str) -> list[str]:
         """Extract squares that have our pieces based on FEN.
