@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from abc import ABC
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -26,8 +27,9 @@ class CustomizableAgent(Agent, ABC):
         self._guest = False
         self._stage = "auth"
         self._decision: str | None = None
-        self._matchmaking_log_step = 0
-        self._draw_wait_ticks = 0
+        self._last_matchmaking_log_time = 0.0
+        self._draw_wait_start_time = 0.0
+        self._last_stage_change_time = 0.0
         self._time_control_weights: dict[int, int] = {}
         self._consecutive_failures = 0
 
@@ -83,13 +85,11 @@ class CustomizableAgent(Agent, ABC):
         self._time_control_weights = state.get("time_control_weights", {})
         if not self._time_control_weights:
             self._time_control_weights = self._random_time_control_weights()
-        self._stage = "auth"
-        self._decision = None
-        self._matchmaking_log_step = 0
-        self._draw_wait_ticks = 0
-        self._consecutive_failures = 0
 
     def _step_auth(self) -> None:
+        current_time = time.time()
+        if current_time - self._last_stage_change_time < 1.0:
+            return
         if not self._guest:
             try:
                 self.ensure_registered()
@@ -101,8 +101,12 @@ class CustomizableAgent(Agent, ABC):
                 self._registered = True
             self.sign_in()
         self._stage = "select_time_control"
+        self._last_stage_change_time = current_time
 
     def _step_select_time_control(self) -> None:
+        current_time = time.time()
+        if current_time - self._last_stage_change_time < 1.0:
+            return
         index = self._pick_time_control()
         logger.info(
             "Selecting time control index=%s",
@@ -111,8 +115,12 @@ class CustomizableAgent(Agent, ABC):
         )
         self._web_client.select_time_control(index)
         self._stage = "queue"
+        self._last_stage_change_time = current_time
 
     def _step_queue(self) -> None:
+        current_time = time.time()
+        if current_time - self._last_stage_change_time < 1.0:
+            return
         if self._guest:
             logger.info("Play as guest", extra={"username": self.username})
             self._web_client.play_as_guest()
@@ -120,24 +128,36 @@ class CustomizableAgent(Agent, ABC):
             logger.info("Play now", extra={"username": self.username})
             self._web_client.queue_play_now()
         self._stage = "matchmaking"
+        self._last_stage_change_time = current_time
 
     def _step_matchmaking(self) -> None:
-        if not self._web_client.is_play_ready():
-            if self._matchmaking_log_step % 60 == 0:
-                logger.info("Matchmaking pending", extra={"username": self.username})
-            self._matchmaking_log_step += 1
+        current_time = time.time()
+        if current_time - self._last_stage_change_time < 1.0:
             return
+        
+        if not self._web_client.is_play_ready():
+            # Log every 60 seconds
+            if current_time - self._last_matchmaking_log_time >= 60.0:
+                logger.info("Matchmaking pending", extra={"username": self.username})
+                self._last_matchmaking_log_time = current_time
+            return
+        
         logger.info("Matchmaking complete", extra={"username": self.username})
         self._stage = "playing"
-        self._matchmaking_log_step = 0
+        self._last_stage_change_time = current_time
 
     def _step_playing(self) -> None:
+        current_time = time.time()
+        if current_time - self._last_stage_change_time < 1.0:
+            return
+
         if self._web_client.is_postgame_visible():
             logger.info(
                 "Postgame visible, ending session",
                 extra={"username": self.username},
             )
             self._stage = "done"
+            self._last_stage_change_time = current_time
             return
 
         if self._decision is None:
@@ -151,18 +171,19 @@ class CustomizableAgent(Agent, ABC):
             logger.info("Accepting draw", extra={"username": self.username})
             self._web_client.accept_draw()
             self._stage = "done"
+            self._last_stage_change_time = current_time
             return
 
         if self._decision == "offer_draw":
             logger.info("Offering draw", extra={"username": self.username})
             self._web_client.offer_draw()
             self._decision = "wait_draw"
-            self._draw_wait_ticks = 0
+            self._draw_wait_start_time = current_time
+            self._last_stage_change_time = current_time
             return
 
         if self._decision == "wait_draw":
-            self._draw_wait_ticks += 1
-            if self._draw_wait_ticks >= 10:
+            if current_time - self._draw_wait_start_time >= 10.0:
                 logger.info(
                     "Draw timeout, resigning", extra={"username": self.username}
                 )
@@ -173,12 +194,14 @@ class CustomizableAgent(Agent, ABC):
             logger.info("Resigning", extra={"username": self.username})
             self._web_client.resign()
             self._decision = "resign_confirm"
+            self._last_stage_change_time = current_time
             return
 
         if self._decision == "resign_confirm":
             logger.info("Confirming resign", extra={"username": self.username})
             self._web_client.resign_confirm()
             self._stage = "done"
+            self._last_stage_change_time = current_time
             return
 
     def _step_done(self) -> None:

@@ -30,9 +30,8 @@ class UsernameFilter(logging.Filter):
 
 @dataclass(frozen=True)
 class RunnerConfig:
-    create_probability: float = 1 / 60  # 1 / 3600
-    start_probability: float = 1  # 1 / 60
-    tick_sleep_seconds: float = 1.0
+    create_interval_seconds: float = 60.0  # How often to try creating agents
+    start_interval_seconds: float = 1.0  # How often to try starting sessions
     max_active_sessions: int = 30
 
 
@@ -48,13 +47,14 @@ class AgentRunner:
         if not self._classpaths:
             raise ValueError("At least one classpath is required.")
         self._config = config or RunnerConfig()
+        self._last_create_time = 0.0
+        self._last_start_time = 0.0
 
     def main_loop(self) -> None:
         while True:
             self._maybe_create_agent()
             self._maybe_start_session()
             self._run_active_sessions()
-            time.sleep(self._config.tick_sleep_seconds)
 
     def run_single_session(
         self, *, classpath: str | None = None, username: str | None = None
@@ -74,26 +74,29 @@ class AgentRunner:
                 logger.info("Session done", extra={"username": username})
                 self._manager.end_session(username)
                 return username
-            time.sleep(self._config.tick_sleep_seconds)
 
     def _maybe_create_agent(self) -> None:
-        if random.random() >= self._config.create_probability:
+        current_time = time.time()
+        if current_time - self._last_create_time < self._config.create_interval_seconds:
             return
         if (
             len(self._manager.list_active_sessions())
             >= self._config.max_active_sessions
         ):
             return
+        self._last_create_time = current_time
         self._create_random_agent()
 
     def _maybe_start_session(self) -> None:
-        if random.random() >= self._config.start_probability:
+        current_time = time.time()
+        if current_time - self._last_start_time < self._config.start_interval_seconds:
             return
         if (
             len(self._manager.list_active_sessions())
             >= self._config.max_active_sessions
         ):
             return
+        self._last_start_time = current_time
         usernames = self._manager.list_known_agents()
         if not usernames:
             return
