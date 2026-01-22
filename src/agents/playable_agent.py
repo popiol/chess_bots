@@ -142,7 +142,7 @@ class PlayableAgent(CustomizableAgent):
                 )
             self._last_calculation_time = time.time()
 
-            logger.info(
+            logger.debug(
                 "Time remaining: %d seconds, move %d, allocated: %d seconds",
                 self._time_remaining,
                 self._moves_made + 1,

@@ -132,7 +132,7 @@ class TrainableAgent(PlayableAgent):
             self._analysis = None
             self._expansion_queue = []
 
-            logger.info(
+            logger.debug(
                 "Decided move %s->%s (eval: %.2f, decisive: %.2f)",
                 from_square,
                 to_square,
@@ -154,7 +154,7 @@ class TrainableAgent(PlayableAgent):
         Processes one node per tick.
         """
 
-        logger.info(
+        logger.debug(
             "Expanding analysis tree, queue size: %d",
             len(self._expansion_queue),
             extra={"username": self.username},
@@ -195,7 +195,7 @@ class TrainableAgent(PlayableAgent):
                 )
                 node.children[move_key] = child_node
                 # Don't add to expansion queue since there's nothing to expand
-                logger.info(
+                logger.debug(
                     "Move %s->%s invalid, created empty node",
                     from_square,
                     to_square,
@@ -223,7 +223,7 @@ class TrainableAgent(PlayableAgent):
             # Update parent evaluations up the tree
             self._propagate_evaluation(child_node)
 
-            logger.info(
+            logger.debug(
                 "Expanded move %s->%s, %d predictions, queue: %d",
                 from_square,
                 to_square,
@@ -238,7 +238,7 @@ class TrainableAgent(PlayableAgent):
         # If we get here, all moves for this node have been expanded
         # Remove it from the queue and continue on next tick
         self._expansion_queue.pop(0)
-        logger.info(
+        logger.debug(
             "Node fully expanded, removed from queue, remaining: %d",
             len(self._expansion_queue),
             extra={"username": self.username},
@@ -272,7 +272,7 @@ class TrainableAgent(PlayableAgent):
             if current.parent_move is None:
                 break
 
-            logger.info(
+            logger.debug(
                 "Updating parent move eval: %.2f -> %.2f, decisive: %.2f -> %.2f",
                 current.parent_move.evaluation,
                 -avg_eval,
@@ -371,7 +371,9 @@ class TrainableAgent(PlayableAgent):
                 )
             )
 
-        logger.info("Predicted %d moves", len(moves), extra={"username": self.username})
+        logger.debug(
+            "Predicted %d moves", len(moves), extra={"username": self.username}
+        )
 
         return moves
 
