@@ -64,7 +64,6 @@ class ChessWebClient:
         self._fill(self._selectors.auth.password, password)
         self._fill(self._selectors.auth.confirm_password, password)
         self._click(self._selectors.auth.submit_signup)
-        self._wait_visible(self._selectors.post_login_ready)
         self.state.signed_in = True
         self.state.guest_mode = False
 
@@ -73,7 +72,6 @@ class ChessWebClient:
         self._fill(self._selectors.auth.username, username)
         self._fill(self._selectors.auth.password, password)
         self._click(self._selectors.auth.submit_signin)
-        self._wait_visible(self._selectors.post_login_ready)
         self.state.signed_in = True
         self.state.guest_mode = False
 
@@ -88,10 +86,6 @@ class ChessWebClient:
 
     def queue_play_now(self) -> None:
         self._click(self._selectors.game.play_now)
-
-    def play_now(self) -> None:
-        self._click(self._selectors.game.play_now)
-        self._wait_visible(self._selectors.play_ready)
 
     def is_play_ready(self) -> bool:
         return self._is_visible(self._selectors.play_ready)
@@ -276,14 +270,14 @@ class ChessWebClient:
     def is_sign_out_available(self) -> bool:
         return self._is_visible(self._selectors.auth.signout)
 
+    def is_post_login_ready(self) -> bool:
+        return self._is_visible(self._selectors.post_login_ready)
+
     def _click(self, selector: str) -> None:
         self._locator(selector).first.click()
 
     def _fill(self, selector: str, value: str) -> None:
         self._locator(selector).first.fill(value)
-
-    def _wait_visible(self, selector: str, timeout_ms: int | None = None) -> None:
-        self._locator(selector).first.wait_for(state="visible", timeout=timeout_ms)
 
     def _is_visible(self, selector: str) -> bool:
         try:

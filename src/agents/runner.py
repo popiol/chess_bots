@@ -79,10 +79,7 @@ class AgentRunner:
         current_time = time.time()
         if current_time - self._last_create_time < self._config.create_interval_seconds:
             return
-        if (
-            len(self._manager.list_active_sessions())
-            >= self._config.max_active_sessions
-        ):
+        if self._manager.active_session_count() >= self._config.max_active_sessions:
             return
         self._last_create_time = current_time
         self._create_random_agent()
@@ -91,27 +88,24 @@ class AgentRunner:
         current_time = time.time()
         if current_time - self._last_start_time < self._config.start_interval_seconds:
             return
-        if (
-            len(self._manager.list_active_sessions())
-            >= self._config.max_active_sessions
-        ):
+        if self._manager.active_session_count() >= self._config.max_active_sessions:
             return
         self._last_start_time = current_time
         usernames = self._manager.list_known_agents()
         if not usernames:
             return
-        active_usernames = set(self._manager.list_active_sessions().keys())
+        active_usernames = self._manager.active_session_usernames()
         candidates = [name for name in usernames if name not in active_usernames]
         if not candidates:
             return
         username = random.choice(candidates)
         logger.info("Starting session", extra={"username": username})
         self._manager.start_session(username)
-        active_count = len(self._manager.list_active_sessions())
+        active_count = self._manager.active_session_count()
         logger.info("Active sessions: %d", active_count, extra={"username": username})
 
     def _run_active_sessions(self) -> None:
-        for username, agent in self._manager.list_active_sessions().items():
+        for username, agent in self._manager.active_sessions_items():
             agent.run()
             if agent.session_done:
                 logger.info("Ending session", extra={"username": username})
@@ -147,7 +141,6 @@ class AgentRunner:
 
 def main() -> None:
     classpath_map = {
-        "PlayableAgent": "src.agents.playable_agent.PlayableAgent",
         "TrainableAgent": "src.agents.trainable_agent.TrainableAgent",
     }
     available_classnames = list(classpath_map.keys())

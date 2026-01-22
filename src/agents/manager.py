@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
 from importlib import import_module
 from typing import Callable, Type
 
@@ -11,6 +11,7 @@ from src.db.schema import AgentMetadata
 from src.web.client import ChessWebClient
 
 logger = logging.getLogger(__name__)
+
 
 class AgentManager:
     def __init__(
@@ -91,8 +92,14 @@ class AgentManager:
     def active_session(self, username: str) -> Agent | None:
         return self._active_sessions.get(username)
 
-    def list_active_sessions(self) -> dict[str, Agent]:
-        return dict(self._active_sessions)
+    def active_session_count(self) -> int:
+        return len(self._active_sessions)
+
+    def active_session_usernames(self) -> set[str]:
+        return set(self._active_sessions.keys())
+
+    def active_sessions_items(self) -> list[tuple[str, Agent]]:
+        return list(self._active_sessions.items())
 
     def list_known_agents(self) -> list[str]:
         return self._repo.list_agent_usernames()

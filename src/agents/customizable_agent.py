@@ -25,11 +25,14 @@ class CustomizableAgent(Agent, ABC):
     ) -> None:
         super().__init__(username, password, email, classpath, web_client)
         self._guest = False
+        self._registered = False
         self._stage = "auth"
+        self._auth_action: str | None = None
         self._decision: str | None = None
         self._last_matchmaking_log_time = 0.0
         self._draw_wait_start_time = 0.0
         self._last_stage_change_time = 0.0
+        self._last_post_login_log_time = 0.0
         self._time_control_weights: dict[int, int] = {}
         self._consecutive_failures = 0
 
@@ -37,6 +40,9 @@ class CustomizableAgent(Agent, ABC):
         try:
             if self._stage == "auth":
                 self._step_auth()
+                return
+            if self._stage == "wait_post_login":
+                self._step_wait_post_login()
                 return
             if self._stage == "select_time_control":
                 self._step_select_time_control()
@@ -71,17 +77,18 @@ class CustomizableAgent(Agent, ABC):
                 self.session_done = True
 
     def snapshot_state(self) -> dict:
-        state = super().snapshot_state()
-        state["guest"] = self._guest
-        state["time_control_weights"] = self._time_control_weights
-        return state
+        return {
+            "guest": self._guest,
+            "registered": self._registered,
+            "time_control_weights": self._time_control_weights,
+        }
 
     def load_state(self, state: dict) -> None:
-        super().load_state(state)
         if "guest" in state:
             self._guest = bool(state.get("guest"))
         else:
             self._guest = random.random() < GUEST_PROBABILITY
+        self._registered = bool(state.get("registered", False))
         self._time_control_weights = state.get("time_control_weights", {})
         if not self._time_control_weights:
             self._time_control_weights = self._random_time_control_weights()
@@ -90,16 +97,83 @@ class CustomizableAgent(Agent, ABC):
         current_time = time.time()
         if current_time - self._last_stage_change_time < 1.0:
             return
+
         if not self._guest:
-            try:
-                self.ensure_registered()
-            except PlaywrightTimeoutError:
+            if not self._registered:
                 logger.info(
-                    "Registration timeout, assuming already registered",
+                    "Signing up email=%s password=%s",
+                    self._email,
+                    self._password,
                     extra={"username": self.username},
                 )
-                self._registered = True
-            self.sign_in()
+                self._web_client.sign_up(
+                    email=self._email,
+                    username=self.username,
+                    password=self._password,
+                )
+                self._auth_action = "signed_up"
+
+            if self._registered and self._auth_action is None:
+                if not self._web_client.is_sign_in_available():
+                    logger.info(
+                        "Sign-in button not available, assuming already signed in",
+                        extra={"username": self.username},
+                    )
+                else:
+                    logger.info("Signing in", extra={"username": self.username})
+                    self._web_client.sign_in(
+                        username=self.username,
+                        password=self._password,
+                    )
+                    self._auth_action = "signed_in"
+
+        self._stage = "wait_post_login"
+        self._last_stage_change_time = current_time
+
+    def _step_wait_post_login(self) -> None:
+        current_time = time.time()
+        if current_time - self._last_stage_change_time < 0.1:
+            return
+
+        # Guest mode skips waiting
+        if self._guest:
+            self._stage = "select_time_control"
+            self._last_stage_change_time = current_time
+            return
+
+        if not self._web_client.is_post_login_ready():
+            # Log every 5 seconds
+            if current_time - self._last_post_login_log_time >= 5.0:
+                action = self._auth_action or "unknown"
+                logger.info(
+                    "Waiting for post-login ready after %s",
+                    action,
+                    extra={"username": self.username},
+                )
+                self._last_post_login_log_time = current_time
+            return
+
+        logger.info("Post-login ready", extra={"username": self.username})
+
+        # Mark as registered if we just signed up
+        if self._auth_action == "signed_up":
+            self._registered = True
+            logger.info("Registration confirmed", extra={"username": self.username})
+            # Now sign in
+            if self._web_client.is_sign_in_available():
+                logger.info("Signing in", extra={"username": self.username})
+                self._web_client.sign_in(
+                    username=self.username,
+                    password=self._password,
+                )
+                self._auth_action = "signed_in"
+                self._last_stage_change_time = current_time
+                return
+
+        if self._auth_action == "signed_in":
+            logger.info("Sign-in confirmed", extra={"username": self.username})
+
+        self._auth_action = None
         self._stage = "select_time_control"
         self._last_stage_change_time = current_time
 
@@ -134,14 +208,14 @@ class CustomizableAgent(Agent, ABC):
         current_time = time.time()
         if current_time - self._last_stage_change_time < 1.0:
             return
-        
+
         if not self._web_client.is_play_ready():
             # Log every 60 seconds
             if current_time - self._last_matchmaking_log_time >= 60.0:
                 logger.info("Matchmaking pending", extra={"username": self.username})
                 self._last_matchmaking_log_time = current_time
             return
-        
+
         logger.info("Matchmaking complete", extra={"username": self.username})
         self._stage = "playing"
         self._last_stage_change_time = current_time

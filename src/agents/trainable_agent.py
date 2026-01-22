@@ -79,18 +79,21 @@ class TrainableAgent(PlayableAgent):
         Returns:
             Tuple of (from_square, to_square, evaluation, decisive) or None if no move chosen
         """
-        # Get squares with our pieces
-        our_squares = self._get_our_piece_squares(current_fen)
-        if not our_squares:
-            logger.warning(
-                "No pieces found for our color", extra={"username": self.username}
-            )
-            return None
+
+        logger.info(
+            "Deciding move for FEN: %s", current_fen, extra={"username": self.username}
+        )
 
         # Initialize analysis if not present
         if self._analysis is None:
             features = self._encode_fen(current_fen)
-            moves = self._predict(features)
+            our_squares = self._extract_our_squares_from_features(features)
+            if not our_squares:
+                logger.warning(
+                    "No pieces found for our color", extra={"username": self.username}
+                )
+                return None
+            moves = self._predict(features, our_squares)
             if not moves:
                 logger.warning(
                     "Model returned no moves", extra={"username": self.username}
@@ -129,6 +132,15 @@ class TrainableAgent(PlayableAgent):
             self._analysis = None
             self._expansion_queue = []
 
+            logger.info(
+                "Decided move %s->%s (eval: %.2f, decisive: %.2f)",
+                from_square,
+                to_square,
+                evaluation,
+                decisive,
+                extra={"username": self.username},
+            )
+
             return (from_square, to_square, evaluation, decisive)
 
         # We have at least 3 seconds - expand the analysis tree
@@ -141,6 +153,13 @@ class TrainableAgent(PlayableAgent):
         Called when we have enough time to do deeper position analysis.
         Processes one node per tick.
         """
+
+        logger.info(
+            "Expanding analysis tree, queue size: %d",
+            len(self._expansion_queue),
+            extra={"username": self.username},
+        )
+
         if not self._expansion_queue:
             logger.debug(
                 "Expansion queue empty, analysis complete",
@@ -176,7 +195,7 @@ class TrainableAgent(PlayableAgent):
                 )
                 node.children[move_key] = child_node
                 # Don't add to expansion queue since there's nothing to expand
-                logger.debug(
+                logger.info(
                     "Move %s->%s invalid, created empty node",
                     from_square,
                     to_square,
@@ -185,7 +204,9 @@ class TrainableAgent(PlayableAgent):
                 return
 
             # Predict for the new position
-            new_predictions = self._predict(new_features)
+            # Extract our_squares from features (channels 0-5 contain our pieces)
+            new_our_squares = self._extract_our_squares_from_features(new_features)
+            new_predictions = self._predict(new_features, new_our_squares)
 
             # Create child node
             child_node = AnalysisNode(
@@ -202,7 +223,7 @@ class TrainableAgent(PlayableAgent):
             # Update parent evaluations up the tree
             self._propagate_evaluation(child_node)
 
-            logger.debug(
+            logger.info(
                 "Expanded move %s->%s, %d predictions, queue: %d",
                 from_square,
                 to_square,
@@ -217,7 +238,7 @@ class TrainableAgent(PlayableAgent):
         # If we get here, all moves for this node have been expanded
         # Remove it from the queue and continue on next tick
         self._expansion_queue.pop(0)
-        logger.debug(
+        logger.info(
             "Node fully expanded, removed from queue, remaining: %d",
             len(self._expansion_queue),
             extra={"username": self.username},
@@ -250,6 +271,15 @@ class TrainableAgent(PlayableAgent):
             parent = current.parent
             if current.parent_move is None:
                 break
+
+            logger.info(
+                "Updating parent move eval: %.2f -> %.2f, decisive: %.2f -> %.2f",
+                current.parent_move.evaluation,
+                -avg_eval,
+                current.parent_move.decisive,
+                avg_decisive,
+                extra={"username": self.username},
+            )
 
             # Update evaluation (negated) and decisive directly
             current.parent_move.evaluation = -avg_eval
@@ -301,11 +331,14 @@ class TrainableAgent(PlayableAgent):
         # Flatten back to 768 dimensions
         return new_board.flatten()
 
-    def _predict(self, features: np.ndarray) -> list[PredictionResult]:
+    def _predict(
+        self, features: np.ndarray, our_squares: list[str]
+    ) -> list[PredictionResult]:
         """Predict candidate moves and evaluations using the model.
 
         Args:
             features: Encoded board features (768-dimensional array from _encode_fen)
+            our_squares: List of square names where our pieces are located (e.g., ['e2', 'g1'])
 
         Returns:
             List of PredictionResult objects containing:
@@ -316,9 +349,16 @@ class TrainableAgent(PlayableAgent):
 
             The best move (highest evaluation) will be selected by _decide_move.
         """
+        assert our_squares, "our_squares cannot be empty"
+
+        # Convert our_squares to indices
+        our_square_indices = [self._square_to_index(square) for square in our_squares]
+
         moves = []
-        for _ in range(5):
-            from_square_idx = random.randint(0, 63)
+        for _ in range(2):
+            # Use valid piece square
+            from_square_idx = random.choice(our_square_indices)
+
             to_square_idx = random.randint(0, 63)
             evaluation = random.uniform(-1.0, 1.0)
             decisive = random.uniform(0.0, 1.0)
@@ -330,6 +370,8 @@ class TrainableAgent(PlayableAgent):
                     decisive=decisive,
                 )
             )
+
+        logger.info("Predicted %d moves", len(moves), extra={"username": self.username})
 
         return moves
 
@@ -402,3 +444,39 @@ class TrainableAgent(PlayableAgent):
         file_idx = index % 8
         rank_idx = index // 8
         return f"{FILES[file_idx]}{RANKS[rank_idx]}"
+
+    def _square_to_index(self, square: str) -> int:
+        """Convert square name (a1-h8) to square index (0-63).
+
+        Args:
+            square: Square name like 'e4'
+
+        Returns:
+            Square index from 0 (a1) to 63 (h8)
+        """
+        file = square[0]
+        rank = square[1]
+        file_idx = FILES.index(file)
+        rank_idx = RANKS.index(rank)
+        return rank_idx * 8 + file_idx
+
+    def _extract_our_squares_from_features(self, features: np.ndarray) -> list[str]:
+        """Extract squares with our pieces from features array.
+
+        Args:
+            features: Encoded board features (768-dimensional array)
+
+        Returns:
+            List of square names where our pieces are located (e.g., ['e2', 'g1'])
+        """
+        board = features.reshape(8, 8, 12)
+        our_squares = []
+
+        for rank_idx in range(8):
+            for file_idx in range(8):
+                # Check if there's any piece in our channels (0-5)
+                if board[rank_idx, file_idx, 0:6].any():
+                    square = f"{FILES[file_idx]}{RANKS[rank_idx]}"
+                    our_squares.append(square)
+
+        return our_squares
