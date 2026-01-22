@@ -45,6 +45,19 @@ Use `data-testid` where available. When `data-testid` is not present, use the pr
 - Post‑game panel: `[data-testid="postgame-panel"]`
 - Post‑game analyze: `[data-testid="postgame-analyze"]`
 - Post‑game new game: `[data-testid="postgame-new-game"]`
+- Post‑game result text:
+  - "White wins"
+  - "Black wins"
+  - "Draw"
+- Post‑game reason text:
+  - "Checkmate"
+  - "Timeout"
+  - "Resignation"
+  - "Stalemate"
+  - "Insufficient material"
+  - "Threefold repetition"
+  - "Fifty move rule"
+  - "Agreement"
 
 Move list cells (replay navigation):
 - Selectable cells: `.selectable`

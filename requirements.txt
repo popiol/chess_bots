@@ -1,3 +1,4 @@
 playwright
 SQLAlchemy
 psycopg2
+numpy

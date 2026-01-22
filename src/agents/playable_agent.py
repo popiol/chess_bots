@@ -25,13 +25,36 @@ class PlayableAgent(CustomizableAgent):
         self._resign_threshold: float = -0.99
         self._draw_threshold: float = 0.01
         self._last_decisive: float | None = None
+        self._time_remaining: int | None = None
+        self._expected_total_moves: int = 20  # Expected moves per player
+        self._allocated_time: int | None = None
+        self._moves_made: int = 0  # Counter for moves we've made
 
     def _step_playing(self) -> None:
         if self._web_client.is_postgame_visible():
+            result = self._web_client.get_game_result()
+            reason = self._web_client.get_game_reason()
+
+            # Convert result to score: 1 (win), 0 (draw), -1 (loss)
+            score = None
+            if result and self._player_color:
+                if result == "Draw":
+                    score = 0
+                elif (result == "White wins" and self._player_color == "white") or (
+                    result == "Black wins" and self._player_color == "black"
+                ):
+                    score = 1
+                else:
+                    score = -1
+
             logger.info(
-                "Postgame visible, ending session",
+                "Postgame visible: %s by %s (score: %s), ending session",
+                result,
+                reason,
+                score,
                 extra={"username": self.username},
             )
+            self._on_game_end(score, reason)
             self._stage = "done"
             return
 
@@ -64,6 +87,8 @@ class PlayableAgent(CustomizableAgent):
                     self._last_to_square,
                     extra={"username": self.username},
                 )
+                # Increment our move counter
+                self._moves_made += 1
             else:
                 logger.info(
                     "Move failed (FEN unchanged) %s -> %s",
@@ -89,7 +114,29 @@ class PlayableAgent(CustomizableAgent):
                 self._last_decisive = None
             return
 
-        # It's our turn - decide which move to make
+        # It's our turn - get time remaining
+        self._time_remaining = self._web_client.get_time_remaining()
+        if self._time_remaining:
+            # Calculate time allocation based on moves made so far
+            # Keep a buffer to avoid over-allocating time near the end
+            expected_moves_remaining = max(
+                11, self._expected_total_moves - self._moves_made
+            )
+            self._allocated_time = round(
+                self._time_remaining / expected_moves_remaining
+            )
+
+            logger.debug(
+                "Time remaining: %d seconds, move %d, allocated: %d seconds",
+                self._time_remaining,
+                self._moves_made + 1,
+                self._allocated_time,
+                extra={"username": self.username},
+            )
+        else:
+            self._allocated_time = None
+
+        # Decide which move to make
         move = self._decide_move(current_fen)
         if move is None:
             return
@@ -105,6 +152,20 @@ class PlayableAgent(CustomizableAgent):
                 extra={"username": self.username},
             )
             self._decision = "resign"
+            return
+
+        # Check if opponent offered draw and we should accept based on decisive value
+        if (
+            decisive < self._draw_threshold
+            and self._web_client.is_accept_draw_visible()
+        ):
+            logger.info(
+                "Position decisive %.2f below threshold %.2f and draw offered, accepting draw",
+                decisive,
+                self._draw_threshold,
+                extra={"username": self.username},
+            )
+            self._decision = "accept_draw"
             return
 
         # Store decisive value to potentially offer draw on opponent's turn
@@ -203,3 +264,15 @@ class PlayableAgent(CustomizableAgent):
                     file_idx += 1
 
         return our_squares
+
+    def _on_game_end(self, score: int | None, reason: str | None) -> None:
+        """Called when the game ends (postgame panel visible).
+
+        Args:
+            score: Game outcome - 1 (win), 0 (draw), -1 (loss), or None if unknown
+            reason: Termination reason in lowercase with underscores:
+                "checkmate", "timeout", "resignation", "stalemate",
+                "insufficient_material", "threefold_repetition",
+                "fifty_move_rule", or "agreement"
+        """
+        pass

@@ -99,6 +99,62 @@ class ChessWebClient:
     def is_postgame_visible(self) -> bool:
         return self._is_visible(self._selectors.game_page.postgame_panel)
 
+    def get_game_result(self) -> str | None:
+        """Get the game result text from postgame panel.
+
+        Returns:
+            One of: "White wins", "Black wins", "Draw", or None if not available
+        """
+        try:
+            panel = self._locator(self._selectors.game_page.postgame_panel)
+            if not panel.first.is_visible():
+                return None
+            text = panel.first.text_content()
+            if text:
+                if "White wins" in text:
+                    return "White wins"
+                elif "Black wins" in text:
+                    return "Black wins"
+                elif "Draw" in text:
+                    return "Draw"
+            return None
+        except Exception:
+            return None
+
+    def get_game_reason(self) -> str | None:
+        """Get the game termination reason from postgame panel.
+
+        Returns:
+            Lowercase reason with underscores: "checkmate", "timeout", "resignation",
+            "stalemate", "insufficient_material", "threefold_repetition",
+            "fifty_move_rule", "agreement", or None if not available
+        """
+        try:
+            panel = self._locator(self._selectors.game_page.postgame_panel)
+            if not panel.first.is_visible():
+                return None
+            text = panel.first.text_content()
+            if text:
+                if "Checkmate" in text:
+                    return "checkmate"
+                elif "Timeout" in text:
+                    return "timeout"
+                elif "Resignation" in text:
+                    return "resignation"
+                elif "Stalemate" in text:
+                    return "stalemate"
+                elif "Insufficient material" in text:
+                    return "insufficient_material"
+                elif "Threefold repetition" in text:
+                    return "threefold_repetition"
+                elif "Fifty move rule" in text:
+                    return "fifty_move_rule"
+                elif "Agreement" in text:
+                    return "agreement"
+            return None
+        except Exception:
+            return None
+
     def is_accept_draw_visible(self) -> bool:
         return self._is_visible(self._selectors.game_page.accept_draw)
 
@@ -143,6 +199,26 @@ class ChessWebClient:
         """
         element = self._locator(self._selectors.game_page.game_fen).first
         return element.inner_text()
+
+    def get_time_remaining(self) -> int | None:
+        """Get the time remaining on the active player's clock in seconds.
+
+        Returns:
+            Time remaining in seconds or None if not available
+        """
+        try:
+            clock_element = self._locator(self._selectors.game_page.active_clock).first
+            if clock_element.is_visible():
+                time_text = clock_element.text_content()
+                if time_text and ":" in time_text:
+                    parts = time_text.strip().split(":")
+                    if len(parts) == 2:
+                        minutes = int(parts[0])
+                        seconds = int(parts[1])
+                        return minutes * 60 + seconds
+            return None
+        except Exception:
+            return None
 
     def is_current_user_turn(self) -> bool:
         """Check if it's the current user's turn to move.

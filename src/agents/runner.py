@@ -145,6 +145,7 @@ class AgentRunner:
 def main() -> None:
     classpath_map = {
         "PlayableAgent": "src.agents.playable_agent.PlayableAgent",
+        "TrainableAgent": "src.agents.trainable_agent.TrainableAgent",
     }
     available_classnames = list(classpath_map.keys())
     base_url = "https://playbullet.gg"
