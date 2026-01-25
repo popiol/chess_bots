@@ -69,6 +69,20 @@ class TrainableAgent(PlayableAgent):
         self._analysis: AnalysisNode | None = None
         # BFS queue for tree expansion
         self._expansion_queue: list[AnalysisNode] = []
+        # Aggression level: -1.0 (defensive/cautious) to 1.0 (aggressive/risky)
+        self._aggression: float = 0.0
+
+    def snapshot_state(self) -> dict:
+        state = super().snapshot_state()
+        state["aggression"] = self._aggression
+        return state
+
+    def load_state(self, state: dict) -> None:
+        super().load_state(state)
+        if "aggression" in state:
+            self._aggression = float(state["aggression"])
+        else:
+            self._aggression = random.uniform(-1.0, 1.0)
 
     def _decide_move(self, current_fen: str) -> tuple[str, str, float, float] | None:
         """Decide which move to make using model prediction.
@@ -110,7 +124,10 @@ class TrainableAgent(PlayableAgent):
 
         # If we have less than 3 seconds, return best move immediately
         if self._allocated_time is None or self._allocated_time < 3:
-            best_move = max(self._analysis.predictions, key=lambda m: m.evaluation)
+            best_move = max(
+                self._analysis.predictions,
+                key=lambda m: m.evaluation + self._aggression * m.decisive,
+            )
             from_square_idx = best_move.from_idx
             to_square_idx = best_move.to_idx
             evaluation = best_move.evaluation
@@ -393,19 +410,20 @@ class TrainableAgent(PlayableAgent):
         """
         # Parse FEN components
         parts = fen.split()
+        if len(parts) < 2:
+            raise ValueError(
+                f"Invalid FEN string provided (missing active color): {fen}"
+            )
+
         board_part = parts[0]
 
         # Board representation: 8x8x12 (6 our piece types + 6 opponent piece types)
         board = np.zeros((8, 8, 12), dtype=np.float32)
 
-        # Determine which pieces are ours based on player color
-        if self._player_color == "white":
-            our_pieces_are_uppercase = True
-        elif self._player_color == "black":
-            our_pieces_are_uppercase = False
-        else:
-            # If color not determined yet, default to white perspective
-            our_pieces_are_uppercase = True
+        # Determine which pieces are ours based on active color in FEN
+        # The second field in FEN is active color ('w' or 'b')
+        active_color = parts[1]
+        our_pieces_are_uppercase = active_color == "w"
 
         rows = board_part.split("/")
         for rank_idx, row in enumerate(rows):
@@ -430,6 +448,10 @@ class TrainableAgent(PlayableAgent):
 
                         board[rank_idx, file_idx, piece_idx] = 1.0
                     file_idx += 1
+
+        # If it's black's move, rotate the board 180 degrees
+        if active_color == "b":
+            board = np.flip(board, axis=(0, 1))
 
         # Flatten board
         return board.flatten()

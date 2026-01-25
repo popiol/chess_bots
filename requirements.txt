@@ -2,3 +2,5 @@ playwright
 SQLAlchemy
 psycopg2
 numpy
+tensorflow-cpu
+chess

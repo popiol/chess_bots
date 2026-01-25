@@ -43,3 +43,11 @@ class Agent(ABC):
     @abstractmethod
     def run(self) -> None:
         raise NotImplementedError
+
+    @abstractmethod
+    def snapshot_state(self) -> dict:
+        """Return a serializable snapshot of the agent's state."""
+
+    @abstractmethod
+    def load_state(self, state: dict) -> None:
+        """Load the agent's state from a snapshot produced by snapshot_state."""
