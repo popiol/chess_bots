@@ -52,6 +52,14 @@ class AnalysisNode:
     # children maps (from_square_idx, to_square_idx) -> resulting position node
 
 
+@dataclass
+class Decision:
+    """Record of a decision made by the agent."""
+
+    features: np.ndarray
+    move: PredictionResult
+
+
 class TrainableAgent(PlayableAgent):
     """Agent that delegates move decisions to a customizable model.
 
@@ -64,13 +72,15 @@ class TrainableAgent(PlayableAgent):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         # Track features (encoded FENs) and corresponding decisions
-        self._decision_history: list[dict] = []
+        self._decision_history: list[Decision] = []
         # Current analysis tree root for multi-step position analysis
         self._analysis: AnalysisNode | None = None
         # BFS queue for tree expansion
         self._expansion_queue: list[AnalysisNode] = []
         # Aggression level: -1.0 (defensive/cautious) to 1.0 (aggressive/risky)
         self._aggression: float = 0.0
+        # Number of moves to return from _predict
+        self.prediction_count: int = 2
 
     def snapshot_state(self) -> dict:
         state = super().snapshot_state()
@@ -135,10 +145,10 @@ class TrainableAgent(PlayableAgent):
 
             # Track features and best move
             self._decision_history.append(
-                {
-                    "features": self._analysis.features.copy(),
-                    "move": best_move,
-                }
+                Decision(
+                    features=self._analysis.features.copy(),
+                    move=best_move,
+                )
             )
 
             # Decode square indices back to square names
@@ -372,7 +382,7 @@ class TrainableAgent(PlayableAgent):
         our_square_indices = [self._square_to_index(square) for square in our_squares]
 
         moves = []
-        for _ in range(2):
+        for _ in range(self.prediction_count):
             # Use valid piece square
             from_square_idx = random.choice(our_square_indices)
 

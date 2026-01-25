@@ -36,6 +36,15 @@ class PlayableAgent(CustomizableAgent):
         self._is_thinking: bool = False  # True when still thinking about current move
         self._current_fen: str | None = None  # Current position FEN
 
+    def _handle_move_failure(self, fen: str, from_square: str, to_square: str) -> None:
+        """Handle a move execution failure (e.g. invalid move)."""
+        logger.info(
+            "Move failed (FEN unchanged) %s -> %s",
+            from_square,
+            to_square,
+            extra={"username": self.username},
+        )
+
     def _step_playing(self) -> None:
         if self._web_client.is_postgame_visible():
             result = self._web_client.get_game_result()
@@ -46,12 +55,12 @@ class PlayableAgent(CustomizableAgent):
             if result and self._player_color:
                 if result == "Draw":
                     score = 0
-                elif (result == "White wins" and self._player_color == "white") or (
-                    result == "Black wins" and self._player_color == "black"
-                ):
-                    score = 1
+                elif result == "White wins":
+                    score = 1 if self._player_color == "white" else -1
+                elif result == "Black wins":
+                    score = 1 if self._player_color == "black" else -1
                 else:
-                    score = -1
+                    raise ValueError(f"Unexpected game result: {result}")
 
             logger.info(
                 "Postgame visible: %s by %s (score: %s), ending session",
@@ -97,11 +106,9 @@ class PlayableAgent(CustomizableAgent):
                 # Increment our move counter
                 self._moves_made += 1
             else:
-                logger.info(
-                    "Move failed (FEN unchanged) %s -> %s",
-                    self._last_from_square,
-                    self._last_to_square,
-                    extra={"username": self.username},
+                assert self._last_from_square and self._last_to_square
+                self._handle_move_failure(
+                    self._fen_before_move, self._last_from_square, self._last_to_square
                 )
             self._fen_before_move = None
 

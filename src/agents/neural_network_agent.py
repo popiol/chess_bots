@@ -114,6 +114,22 @@ class NeuralNetworkAgent(TrainableAgent):
 
         return model
 
+    def _move_to_id(self, from_idx: int, to_idx: int) -> int:
+        if to_idx < from_idx:
+            local = to_idx
+        else:
+            local = to_idx - 1
+        return from_idx * 63 + local
+
+    def _id_to_move(self, move_id: int) -> tuple[int, int]:
+        from_idx = move_id // 63
+        local = move_id % 63
+        if local < from_idx:
+            to_idx = local
+        else:
+            to_idx = local + 1
+        return from_idx, to_idx
+
     def _predict(
         self, features: np.ndarray, our_squares: list[str]
     ) -> list[PredictionResult]:
@@ -122,8 +138,7 @@ class NeuralNetworkAgent(TrainableAgent):
                 "Model is not initialized. Load or create the model first."
             )
 
-        if not our_squares:
-            return []
+        assert our_squares, "our_squares cannot be empty"
 
         # Run the model to get move scores
         inputs = np.asarray(features, dtype=np.float32).reshape(1, -1)
@@ -134,36 +149,154 @@ class NeuralNetworkAgent(TrainableAgent):
 
         # Flatten move indices 0..4031 into (from_idx, to_idx) using
         # a 64 x 63 mapping over all (from, to) pairs with from != to.
-        predictions: list[PredictionResult] = []
-        for move_id, (eval_val, dec_val) in enumerate(moves_pred):
-            # Check validity using the validity model
-            validity_score = float(valid_pred[move_id][0])
+        our_square_indices = {self._square_to_index(square) for square in our_squares}
+        candidates: list[tuple[float, PredictionResult]] = []
 
-            # Filter clearly invalid moves (e.g. < 0.5 probability)
-            if validity_score < 0.5:
+        for move_id, (eval_val, dec_val) in enumerate(moves_pred):
+            from_idx, to_idx = self._id_to_move(move_id)
+
+            # Filter strictly by pieces we own
+            if from_idx not in our_square_indices:
                 continue
 
-            from_idx = move_id // 63
-            local = move_id % 63
-            if local < from_idx:
-                to_idx = local
-            else:
-                to_idx = local + 1
-            predictions.append(
-                PredictionResult(
-                    from_idx=from_idx,
-                    to_idx=to_idx,
-                    evaluation=float(eval_val),
-                    decisive=float(dec_val),
+            validity_score = float(valid_pred[move_id][0])
+            candidates.append(
+                (
+                    validity_score,
+                    PredictionResult(
+                        from_idx=from_idx,
+                        to_idx=to_idx,
+                        evaluation=float(eval_val),
+                        decisive=float(dec_val),
+                    ),
                 )
             )
 
-        # Filter out moves that don't start from one of our squares
-        our_square_indices = {self._square_to_index(square) for square in our_squares}
-        filtered = [p for p in predictions if p.from_idx in our_square_indices]
+        # Filter by validity threshold
+        valid_candidates = [c for c in candidates if c[0] >= 0.5]
 
-        # If filtering removed everything, fall back to all predictions
-        return filtered or predictions
+        # Fallback to all candidates if no valid moves found
+        final_pool = valid_candidates if valid_candidates else candidates
 
-    def on_game_end(self, result: str, reason: str) -> None:
-        pass
+        # Sort by evaluation descending (best moves first)
+        final_pool.sort(key=lambda x: x[1].evaluation, reverse=True)
+
+        # Return top N predictions
+        return [c[1] for c in final_pool[: self.prediction_count]]
+
+    def _on_game_end(self, score: int | None, reason: str | None) -> None:
+        """Called when the game ends. Trains the model based on the game result."""
+        assert score is not None, "Game score is missing"
+
+        if self._moves_made < 2 or (
+            reason in ["Timeout", "Agreement"] and self._moves_made < 10
+        ):
+            return
+
+        assert self._decision_history, "Decision history is empty but moves were made"
+
+        assert self.model is not None, "Model is not initialized"
+
+        try:
+            # Prepare batch from history
+            inputs = []
+            move_indices = []
+
+            for decision in self._decision_history:
+                inputs.append(decision.features)
+                move = decision.move  # PredictionResult
+
+                # Calculate move_id
+                from_idx = move.from_idx
+                to_idx = move.to_idx
+
+                move_id = self._move_to_id(from_idx, to_idx)
+                move_indices.append(move_id)
+
+            X = np.array(inputs)
+
+            # Predict current outputs
+            preds = self.model.predict(X, verbose=0)
+            target_moves = np.zeros_like(preds[0])
+            target_valid = preds[1]
+
+            # Targets for this game
+            eval_target = float(score)
+            decisive_target = float(abs(score))
+
+            for i, move_id in enumerate(move_indices):
+                # Update Strategy Head for the chosen move
+                target_moves[i, move_id, 0] = eval_target
+                target_moves[i, move_id, 1] = decisive_target
+
+                # Update Validity Head (reinforce that this move was valid)
+                target_valid[i, move_id, 0] = 1.0
+
+            # Train on the sequence of moves from this game
+            loss = self.model.train_on_batch(X, [target_moves, target_valid])
+
+            logger.info(
+                "Trained on game end (score=%s). Samples: %d. Loss: %s",
+                score,
+                len(X),
+                loss,
+                extra={"username": self.username},
+            )
+
+        except Exception as e:
+            logger.error(
+                "Failed to train on game end: %s",
+                e,
+                exc_info=True,
+                extra={"username": self.username},
+            )
+
+    def _handle_move_failure(self, fen: str, from_square: str, to_square: str) -> None:
+        """Handle a move execution failure by training the model that this move is invalid."""
+        assert self.model is not None, "Model is not initialized"
+
+        if not fen or not from_square or not to_square:
+            return
+
+        try:
+            # 1. Encode context
+            features = self._encode_fen(fen)
+
+            # 2. Determine move ID
+            from_idx = self._square_to_index(from_square)
+            to_idx = self._square_to_index(to_square)
+
+            if from_idx == to_idx:
+                return
+
+            move_id = self._move_to_id(from_idx, to_idx)
+
+            # 3. Get current predictions to use as baseline
+            # We want to keep other predictions stable, only penalizing the invalid move
+            inp = features.reshape(1, 768)
+            preds = self.model.predict(inp, verbose=0)
+
+            # Use current predictions as targets for moves to avoid changing them
+            target_moves = preds[0]
+
+            # Use current validity predictions but penalize the specific invalid move
+            target_valid = np.copy(preds[1])
+            target_valid[0, move_id, 0] = 0.0
+
+            # 4. Train on this single sample
+            loss = self.model.train_on_batch(x=inp, y=[target_moves, target_valid])
+
+            logger.info(
+                "Trained validity (invalid) for move %s->%s. Loss: %s",
+                from_square,
+                to_square,
+                loss,
+                extra={"username": self.username},
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to train on move failure: %s",
+                e,
+                exc_info=True,
+                extra={"username": self.username},
+            )
