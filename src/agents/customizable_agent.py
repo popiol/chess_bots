@@ -35,6 +35,8 @@ class CustomizableAgent(Agent, ABC):
         self._last_post_login_log_time = 0.0
         self._time_control_weights: dict[int, int] = {}
         self._consecutive_failures = 0
+        # Maximum seconds to wait for post-login readiness before proceeding
+        self._post_login_timeout: float = 10.0
 
     def run(self) -> None:
         try:
@@ -142,7 +144,19 @@ class CustomizableAgent(Agent, ABC):
             return
 
         if not self._web_client.is_post_login_ready():
-            # Log every 5 seconds
+            # If we've been waiting too long, proceed anyway to avoid stalling
+            if current_time - self._last_stage_change_time >= self._post_login_timeout:
+                logger.warning(
+                    "Post-login readiness wait exceeded %.1f seconds, proceeding to auth",
+                    self._post_login_timeout,
+                    extra={"username": self.username},
+                )
+                self._stage = "auth"
+                self._registered = True  # Assume registered if registration failed
+                self._last_stage_change_time = current_time
+                return
+
+            # Log every 5 seconds while waiting
             if current_time - self._last_post_login_log_time >= 5.0:
                 action = self._auth_action or "unknown"
                 logger.info(

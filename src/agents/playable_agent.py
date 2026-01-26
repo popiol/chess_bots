@@ -28,7 +28,7 @@ class PlayableAgent(CustomizableAgent):
         self._last_decisive: float | None = None
         self._time_remaining: int | None = None
         self._expected_total_moves: int = 20  # Expected moves per player
-        self._allocated_time: int | None = None
+        self._allocated_time: float | None = None
         self._last_calculation_time: float | None = (
             None  # System time at last calculation
         )
@@ -83,17 +83,6 @@ class PlayableAgent(CustomizableAgent):
                     extra={"username": self.username},
                 )
 
-        # Get current position (skip fetch if we're already thinking about a move)
-        if not self._is_thinking:
-            try:
-                self._current_fen = self._web_client.get_current_fen()
-            except Exception:
-                logger.warning(
-                    "Failed to get FEN, trying again",
-                    extra={"username": self.username},
-                )
-                return
-
         # If we have a pending move verification, check if FEN changed
         if self._fen_before_move is not None:
             if self._current_fen != self._fen_before_move:
@@ -105,15 +94,20 @@ class PlayableAgent(CustomizableAgent):
                 )
                 # Increment our move counter
                 self._moves_made += 1
+                self._last_calculation_time = None
             else:
-                assert self._last_from_square and self._last_to_square
+                assert (
+                    self._fen_before_move
+                    and self._last_from_square
+                    and self._last_to_square
+                )
                 self._handle_move_failure(
                     self._fen_before_move, self._last_from_square, self._last_to_square
                 )
             self._fen_before_move = None
 
-        # If it's not our turn and we're not thinking, check if we should offer draw and skip to next tick
-        if not self._is_thinking and not self._web_client.is_current_user_turn():
+        # If it's not our turn, check if we should offer draw and skip to next tick
+        if not self._web_client.is_current_user_turn():
             if (
                 self._last_decisive is not None
                 and self._last_decisive < self._draw_threshold
@@ -128,29 +122,37 @@ class PlayableAgent(CustomizableAgent):
                 self._last_decisive = None
             return
 
+        # Get current position (skip fetch if we're already thinking about a move)
+        if not self._is_thinking:
+            try:
+                self._current_fen = self._web_client.get_current_fen()
+            except Exception:
+                logger.warning(
+                    "Failed to get FEN, trying again",
+                    extra={"username": self.username},
+                )
+                return
+
         # It's our turn - get time remaining
         self._time_remaining = self._web_client.get_time_remaining()
         if self._time_remaining:
             if (
-                self._moves_made == 0
-                and self._last_calculation_time is not None
+                self._last_calculation_time is not None
                 and self._allocated_time is not None
             ):
-                # Subsequent calculations on move 1 - decrease by system time passed
-                time_passed = round(time.time() - self._last_calculation_time)
-                self._allocated_time = max(0, self._allocated_time - time_passed)
+                # Subsequent calculation on each move decrease by elapsed time
+                elapsed = time.time() - self._last_calculation_time
+                self._allocated_time = max(0.0, self._allocated_time - elapsed)
             else:
-                # First calculation on move 1, or move 2+ - calculate normally
+                # First calculation on each move
                 expected_moves_remaining = max(
                     11, self._expected_total_moves - self._moves_made
                 )
-                self._allocated_time = round(
-                    self._time_remaining / expected_moves_remaining
-                )
+                self._allocated_time = self._time_remaining / expected_moves_remaining
             self._last_calculation_time = time.time()
 
-            logger.debug(
-                "Time remaining: %d seconds, move %d, allocated: %d seconds",
+            logger.info(
+                "Time remaining: %d seconds, move %d, allocated: %.2f seconds",
                 self._time_remaining,
                 self._moves_made + 1,
                 self._allocated_time,

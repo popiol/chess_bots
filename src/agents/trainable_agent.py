@@ -112,18 +112,9 @@ class TrainableAgent(PlayableAgent):
         if self._analysis is None:
             features = self._encode_fen(current_fen)
             our_squares = self._extract_our_squares_from_features(features)
-            if not our_squares:
-                logger.warning(
-                    "No pieces found for our color", extra={"username": self.username}
-                )
-                return None
+            assert our_squares, "No pieces found for our color"
             moves = self._predict(features, our_squares)
-            if not moves:
-                logger.warning(
-                    "Model returned no moves", extra={"username": self.username}
-                )
-                return None
-
+            assert moves, "Predict returned no moves"
             self._analysis = AnalysisNode(features=features, predictions=moves)
             self._expansion_queue = [self._analysis]
             logger.debug(
@@ -456,12 +447,10 @@ class TrainableAgent(PlayableAgent):
                         else:
                             piece_idx = piece_type_idx + 6
 
-                        board[rank_idx, file_idx, piece_idx] = 1.0
+                        # FEN rows are ordered from rank 8 down to rank 1. Store so that
+                        # board[0] corresponds to rank1 (a1-h1) to match other helpers.
+                        board[7 - rank_idx, file_idx, piece_idx] = 1.0
                     file_idx += 1
-
-        # If it's black's move, rotate the board 180 degrees
-        if active_color == "b":
-            board = np.flip(board, axis=(0, 1))
 
         # Flatten board
         return board.flatten()

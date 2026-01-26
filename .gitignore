@@ -3,6 +3,8 @@ models/
 activate/
 deactivate/
 
+bash.exe.stackdump
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -30,9 +30,9 @@ class UsernameFilter(logging.Filter):
 
 @dataclass(frozen=True)
 class RunnerConfig:
-    create_interval_seconds: float = 60.0  # How often to try creating agents
-    start_interval_seconds: float = 1.0  # How often to try starting sessions
-    max_active_sessions: int = 30
+    create_interval_seconds: float = 3600.0  # How often to try creating agents
+    start_interval_seconds: float = 60.0  # How often to try starting sessions
+    max_active_sessions: int = 20
 
 
 class AgentRunner:
@@ -47,7 +47,7 @@ class AgentRunner:
         if not self._classpaths:
             raise ValueError("At least one classpath is required.")
         self._config = config or RunnerConfig()
-        self._last_create_time = 0.0
+        self._last_create_time = time.time()
         self._last_start_time = 0.0
 
     def main_loop(self) -> None:
@@ -67,7 +67,6 @@ class AgentRunner:
 
         assert username is not None
         agent = self._manager.start_session(username)
-        logger.info("Session started", extra={"username": username})
         while True:
             agent.run()
             if agent.session_done:
@@ -129,19 +128,19 @@ class AgentRunner:
             classpath,
             extra={"username": username},
         )
-        self._manager.create_agent(
+        metadata = self._manager.create_agent(
             username=username,
             password=password,
             email=email,
             classpath=classpath,
             state={},
         )
-        return username
+        return metadata.username
 
 
 def main() -> None:
     classpath_map = {
-        "TrainableAgent": "src.agents.trainable_agent.TrainableAgent",
+        "NeuralNetworkAgent": "src.agents.neural_network_agent.NeuralNetworkAgent",
     }
     available_classnames = list(classpath_map.keys())
     base_url = "https://playbullet.gg"
@@ -154,6 +153,11 @@ def main() -> None:
     parser.add_argument(
         "--username",
         help="Run a single session for an existing agent username.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging.",
     )
     args = parser.parse_args()
 
@@ -170,7 +174,7 @@ def main() -> None:
     handler.setFormatter(logging.Formatter("%(asctime)s %(username)s %(message)s"))
     handler.addFilter(UsernameFilter())
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
     root_logger.addHandler(handler)
     repo = AgentRepository.from_env()
     web_factory = WebClientFactory(

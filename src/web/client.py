@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -7,6 +8,8 @@ from playwright.sync_api import sync_playwright
 
 from src.web.config import BrowserConfig
 from src.web.selectors import SiteSelectors
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -129,22 +132,25 @@ class ChessWebClient:
                 return None
             text = panel.first.text_content()
             if text:
-                if "Checkmate" in text:
+                if "checkmate" in text:
                     return "checkmate"
-                elif "Timeout" in text:
+                elif "timeout" in text:
                     return "timeout"
-                elif "Resignation" in text:
+                elif "resignation" in text:
                     return "resignation"
-                elif "Stalemate" in text:
+                elif "stalemate" in text:
                     return "stalemate"
-                elif "Insufficient material" in text:
+                elif "insufficient material" in text:
                     return "insufficient_material"
-                elif "Threefold repetition" in text:
+                elif "threefold repetition" in text:
                     return "threefold_repetition"
-                elif "Fifty move rule" in text:
+                elif "fifty move rule" in text:
                     return "fifty_move_rule"
-                elif "Agreement" in text:
+                elif "agreement" in text:
                     return "agreement"
+
+            logger.error("Could not determine game reason from text: %s", text)
+
             return None
         except Exception:
             return None

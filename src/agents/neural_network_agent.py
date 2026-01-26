@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -64,7 +66,26 @@ class NeuralNetworkAgent(TrainableAgent):
                 model_path,
                 extra={"username": self.username},
             )
+
             self.model = self.create_model()
+
+            logger.info(
+                "Starting background pretraining for new model",
+                extra={"username": self.username},
+            )
+
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "src.agents.neural_network_pretrainer",
+                    "train",
+                    "--username",
+                    self.username,
+                ]
+            )
+
+            self._stage = "done"
 
     def create_model(self):
         """Create and return a new TensorFlow model.
@@ -189,8 +210,14 @@ class NeuralNetworkAgent(TrainableAgent):
         assert score is not None, "Game score is missing"
 
         if self._moves_made < 2 or (
-            reason in ["Timeout", "Agreement"] and self._moves_made < 10
+            reason in ["timeout", "agreement"] and self._moves_made < 10
         ):
+            logger.info(
+                "Skipping training on game end due to insufficient moves made (%d) for reason=%s",
+                self._moves_made,
+                reason,
+                extra={"username": self.username},
+            )
             return
 
         assert self._decision_history, "Decision history is empty but moves were made"
@@ -233,11 +260,18 @@ class NeuralNetworkAgent(TrainableAgent):
                 target_valid[i, move_id, 0] = 1.0
 
             # Train on the sequence of moves from this game
-            loss = self.model.train_on_batch(X, [target_moves, target_valid])
+            for _ in range(10):
+                loss = self.model.train_on_batch(X, [target_moves, target_valid])
+
+            # Save the model
+            model_path = Path(self.model_file_path)
+            model_path.parent.mkdir(parents=True, exist_ok=True)
+            self.model.save(model_path)
 
             logger.info(
-                "Trained on game end (score=%s). Samples: %d. Loss: %s",
+                "Trained on game end (score=%s) and saved model to %s. Samples: %d. Loss: %s",
                 score,
+                model_path,
                 len(X),
                 loss,
                 extra={"username": self.username},
@@ -255,8 +289,9 @@ class NeuralNetworkAgent(TrainableAgent):
         """Handle a move execution failure by training the model that this move is invalid."""
         assert self.model is not None, "Model is not initialized"
 
-        if not fen or not from_square or not to_square:
-            return
+        assert fen and from_square and to_square, (
+            "Invalid parameters for move failure handling"
+        )
 
         try:
             # 1. Encode context
@@ -284,7 +319,8 @@ class NeuralNetworkAgent(TrainableAgent):
             target_valid[0, move_id, 0] = 0.0
 
             # 4. Train on this single sample
-            loss = self.model.train_on_batch(x=inp, y=[target_moves, target_valid])
+            for _ in range(10):
+                loss = self.model.train_on_batch(x=inp, y=[target_moves, target_valid])
 
             logger.info(
                 "Trained validity (invalid) for move %s->%s. Loss: %s",

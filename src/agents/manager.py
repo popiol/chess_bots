@@ -42,7 +42,10 @@ class AgentManager:
 
     def start_session(self, username: str) -> Agent:
         if username in self._active_sessions:
+            logger.info("Session already active", extra={"username": username})
             return self._active_sessions[username]
+
+        logger.info("Starting session", extra={"username": username})
 
         agent_meta = self._repo.get_metadata_by_username(username)
         if not agent_meta:

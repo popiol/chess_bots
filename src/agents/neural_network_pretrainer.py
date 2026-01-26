@@ -16,7 +16,7 @@ from src.agents.neural_network_agent import NeuralNetworkAgent
 logger = logging.getLogger(__name__)
 
 
-class NeuralNetworkAgentTester:
+class NeuralNetworkPretrainer:
     """Utility class to train and evaluate a NeuralNetworkAgent.
 
     Expects training data in CSV format at data/tactic_evals.csv.
@@ -53,7 +53,6 @@ class NeuralNetworkAgentTester:
         self._shuffle = shuffle
         self._random_seed = random_seed
         self._max_samples = max_samples
-
         self._train_indices: list[int] | None = None
         self._test_indices: list[int] | None = None
         self._total_samples: int = 0
@@ -227,7 +226,7 @@ class NeuralNetworkAgentTester:
         dataset = dataset.prefetch(tf.data.AUTOTUNE)
         return dataset
 
-    def train(self, epochs: int = 10, batch_size: int = 32) -> None:
+    def train(self, epochs: int = 1, batch_size: int = 32) -> None:
         """Train the multi-task model by alternating between datasets."""
 
         if self._train_indices is None:
@@ -319,7 +318,7 @@ class NeuralNetworkAgentTester:
                 initial_epoch=epoch,
                 epochs=epoch + 1,  # Note: this just continues training
                 steps_per_epoch=steps_per_epoch,
-                verbose=1,
+                verbose=0,
             )
 
             logger.info(f"Epoch {epoch + 1}/{epochs} - Task: Evaluation/Decisive")
@@ -328,7 +327,7 @@ class NeuralNetworkAgentTester:
                 initial_epoch=epoch,
                 epochs=epoch + 1,
                 steps_per_epoch=steps_per_epoch,
-                verbose=1,
+                verbose=0,
             )
 
         # Save the trained models
@@ -336,7 +335,7 @@ class NeuralNetworkAgentTester:
 
         model_path.parent.mkdir(parents=True, exist_ok=True)
 
-        logger.info("Saving trained multi-task model to %s", model_path)
+        logger.info("Saving trained model to %s", model_path)
         self._agent.model.save(model_path)
 
     def _parse_row_validity(
@@ -476,14 +475,10 @@ class NeuralNetworkAgentTester:
 
 def main() -> int:
     """Train or evaluate a NeuralNetworkAgent from the command line."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-
     parser = argparse.ArgumentParser(
         description="Train or evaluate a NeuralNetworkAgent"
     )
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Train command
@@ -548,6 +543,11 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
     # Create agent instance
     agent = NeuralNetworkAgent(
         username=args.username,
@@ -558,7 +558,7 @@ def main() -> int:
     )
 
     # Create tester
-    tester = NeuralNetworkAgentTester(
+    tester = NeuralNetworkPretrainer(
         agent=agent,
         data_path=args.data_path,
         test_split=args.test_split,
