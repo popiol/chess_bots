@@ -4,8 +4,6 @@ import logging
 import random
 import time
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-
 from src.agents.customizable_agent import CustomizableAgent
 
 logger = logging.getLogger(__name__)
@@ -35,6 +33,7 @@ class PlayableAgent(CustomizableAgent):
         self._moves_made: int = 0  # Counter for moves we've made
         self._is_thinking: bool = False  # True when still thinking about current move
         self._current_fen: str | None = None  # Current position FEN
+        self._made_decisions: list[tuple[str, str]] = []
 
     def _handle_move_failure(self, fen: str, from_square: str, to_square: str) -> None:
         """Handle a move execution failure (e.g. invalid move)."""
@@ -83,9 +82,17 @@ class PlayableAgent(CustomizableAgent):
                     extra={"username": self.username},
                 )
 
-        # If we have a pending move verification, check if FEN changed
-        if self._fen_before_move is not None:
-            if self._current_fen != self._fen_before_move:
+        # If we made a move, check if it was successful
+        if self._made_decisions and not self._is_thinking:
+            valid = True
+
+            if self._current_fen == self._fen_before_move:
+                lastmove, valid = self._web_client.get_last_move_valid()
+                if lastmove is None or lastmove != "".join(self._made_decisions[-1]):
+                    # Move not yet reflected on site
+                    return
+
+            if valid:
                 logger.info(
                     "Move successful %s -> %s",
                     self._last_from_square,
@@ -95,6 +102,7 @@ class PlayableAgent(CustomizableAgent):
                 # Increment our move counter
                 self._moves_made += 1
                 self._last_calculation_time = None
+                self._made_decisions.clear()
             else:
                 assert (
                     self._fen_before_move
@@ -104,6 +112,7 @@ class PlayableAgent(CustomizableAgent):
                 self._handle_move_failure(
                     self._fen_before_move, self._last_from_square, self._last_to_square
                 )
+
             self._fen_before_move = None
 
         # If it's not our turn, check if we should offer draw and skip to next tick
@@ -151,7 +160,7 @@ class PlayableAgent(CustomizableAgent):
                 self._allocated_time = self._time_remaining / expected_moves_remaining
             self._last_calculation_time = time.time()
 
-            logger.info(
+            logger.debug(
                 "Time remaining: %d seconds, move %d, allocated: %.2f seconds",
                 self._time_remaining,
                 self._moves_made + 1,
@@ -200,23 +209,17 @@ class PlayableAgent(CustomizableAgent):
         self._last_decisive = decisive
 
         # Make move
-        try:
-            logger.info(
-                "Attempting move %s -> %s",
-                from_square,
-                to_square,
-                extra={"username": self.username},
-            )
-            self._fen_before_move = self._current_fen
-            self._last_from_square = from_square
-            self._last_to_square = to_square
-            self._web_client.make_move(from_square, to_square)
-        except PlaywrightTimeoutError:
-            logger.warning(
-                "Move timeout (likely illegal), trying again",
-                extra={"username": self.username},
-            )
-            self._fen_before_move = None
+        logger.info(
+            "Attempting move %s -> %s",
+            from_square,
+            to_square,
+            extra={"username": self.username},
+        )
+        self._fen_before_move = self._current_fen
+        self._last_from_square = from_square
+        self._last_to_square = to_square
+        self._made_decisions.append((from_square, to_square))
+        self._web_client.make_move(from_square, to_square)
 
     def _decide_move(self, current_fen: str) -> tuple[str, str, float, float] | None:
         """Decide which move to make.

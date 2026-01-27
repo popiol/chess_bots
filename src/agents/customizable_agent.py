@@ -153,6 +153,7 @@ class CustomizableAgent(Agent, ABC):
                 )
                 self._stage = "auth"
                 self._registered = True  # Assume registered if registration failed
+                self._auth_action = None
                 self._last_stage_change_time = current_time
                 return
 

@@ -41,7 +41,7 @@ class NeuralNetworkPretrainer:
     def __init__(
         self,
         agent: NeuralNetworkAgent,
-        data_path: str = "data/tactic_evals.csv",
+        data_path: str = "data/lichess.csv",
         test_split: float = 0.2,
         shuffle: bool = True,
         random_seed: int = 42,
@@ -147,8 +147,6 @@ class NeuralNetworkPretrainer:
             for row in reader:
                 if self._parse_row(row) is not None:
                     valid_count += 1
-                    if valid_count >= max_samples:
-                        break
 
         if valid_count == 0:
             raise ValueError("No valid data rows found in CSV")
@@ -160,7 +158,12 @@ class NeuralNetworkPretrainer:
             rng = np.random.default_rng(self._random_seed)
             rng.shuffle(indices)
 
-        split_idx = int(valid_count * (1.0 - self._test_split))
+        # If max_samples is smaller than available valid rows, take a random subset
+        if max_samples is not None and max_samples > 0 and max_samples < valid_count:
+            indices = indices[:max_samples]
+
+        # Split into train/test
+        split_idx = int(len(indices) * (1.0 - self._test_split))
         train_indices = indices[:split_idx].tolist()
         test_indices = indices[split_idx:].tolist()
 
@@ -187,7 +190,6 @@ class NeuralNetworkPretrainer:
 
         index_set = set(indices)
         current_idx = 0
-        max_samples = self._max_samples
 
         with self._data_path.open("r", encoding="utf-8") as f:
             reader = csv.reader(f)
@@ -206,8 +208,6 @@ class NeuralNetworkPretrainer:
                     if current_idx in index_set:
                         yield result
                     current_idx += 1
-                    if current_idx >= max_samples:
-                        break
 
     def _create_dataset(self, indices: list[int], batch_size: int) -> tf.data.Dataset:
         """Create a TensorFlow Dataset from the given indices."""
@@ -308,26 +308,27 @@ class NeuralNetworkPretrainer:
             )
             .batch(batch_size)
             .prefetch(tf.data.AUTOTUNE)
+            .repeat()
         )
 
         # Training Loop: Alternate between tasks per epoch
         for epoch in range(epochs):
+            # logger.info(f"Epoch {epoch + 1}/{epochs} - Task: Evaluation/Decisive")
+            # self._agent.model.fit(
+            #     moves_dataset,
+            #     initial_epoch=epoch,
+            #     epochs=epoch + 1,
+            #     steps_per_epoch=steps_per_epoch,
+            #     verbose=1,
+            # )
+
             logger.info(f"Epoch {epoch + 1}/{epochs} - Task: Validity")
             self._agent.model.fit(
                 valid_dataset,
                 initial_epoch=epoch,
                 epochs=epoch + 1,  # Note: this just continues training
                 steps_per_epoch=steps_per_epoch,
-                verbose=0,
-            )
-
-            logger.info(f"Epoch {epoch + 1}/{epochs} - Task: Evaluation/Decisive")
-            self._agent.model.fit(
-                moves_dataset,
-                initial_epoch=epoch,
-                epochs=epoch + 1,
-                steps_per_epoch=steps_per_epoch,
-                verbose=0,
+                verbose=1,
             )
 
         # Save the trained models
@@ -465,12 +466,226 @@ class NeuralNetworkPretrainer:
         move_mae = moves_results["eval_mae"]
 
         # valid_results: Moves head is weighted 0.
-        valid_acc = valid_results["valid_acc"]
+        valid_f1 = valid_results.get("valid_f1_score", 0.0)
+        valid_precision = valid_results.get("valid_precision", 0.0)
+        valid_recall = valid_results.get("valid_recall", 0.0)
 
         logger.info("Move Model MAE: %.4f", move_mae)
-        logger.info("Validity Model Acc: %.4f", valid_acc)
+        logger.info(
+            "Validity Model F1: %.4f, Precision: %.4f, Recall: %.4f",
+            valid_f1,
+            valid_precision,
+            valid_recall,
+        )
 
-        return {"mae": move_mae, "validity_acc": valid_acc}
+        return {
+            "mae": move_mae,
+            "validity_f1": valid_f1,
+            "validity_precision": valid_precision,
+            "validity_recall": valid_recall,
+        }
+
+    def predict_starting_position(self) -> None:
+        """Predict and display moves for the starting chess position."""
+        self._agent.load_model()
+
+        if self._agent.model is None:
+            raise RuntimeError("Model is not initialized. Load or train a model first.")
+
+        # Starting position FEN
+        starting_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+        logger.info("Predicting for starting position: %s", starting_fen)
+
+        # Get actual legal moves using python-chess
+        board = chess.Board(starting_fen)
+        actual_legal_moves = set()
+        for move in board.legal_moves:
+            uci = move.uci()
+            from_sq = uci[:2]
+            to_sq = uci[2:4]
+            actual_legal_moves.add((from_sq, to_sq))
+
+        print(f"\n=== Actual Legal Moves (count: {len(actual_legal_moves)}) ===")
+        for from_sq, to_sq in sorted(actual_legal_moves):
+            print(f"{from_sq}{to_sq}")
+
+        # Encode FEN
+        features = self._agent._encode_fen(starting_fen)
+        features_batch = np.expand_dims(features, axis=0)
+
+        # Get predictions
+        moves_pred, valid_pred = self._agent.model.predict(features_batch, verbose=0)
+
+        # Extract predictions for the single position
+        move_evals = moves_pred[0, :, 0]  # Evaluation for each move
+        move_decisive = moves_pred[0, :, 1]  # Decisive score for each move
+        move_valid = valid_pred[0, :, 0]  # Validity prediction for each move
+
+        # Show model results for specific moves of interest
+        for mv in ("d2d4", "e2e4"):
+            from_sq = mv[:2]
+            to_sq = mv[2:4]
+            try:
+                f_idx = self._agent._square_to_index(from_sq)
+                t_idx = self._agent._square_to_index(to_sq)
+                move_id = self._agent._move_to_id(f_idx, t_idx)
+                m_eval = float(move_evals[move_id])
+                m_dec = float(move_decisive[move_id])
+                m_valid = float(move_valid[move_id])
+                print(
+                    f"\nModel prediction for {mv}: eval={m_eval:+.4f}, decisive={m_dec:.4f}, valid={m_valid:.4f}"
+                )
+            except Exception:
+                print(f"\nModel prediction for {mv}: not available")
+
+        # Print top 10 moves that the model predicts as valid (threshold 0.5),
+        # sorted by the model's evaluation score.
+        print("\n=== Top 10 Model-Predicted Valid Moves by Evaluation ===")
+        model_valid = []
+        threshold = 0.5
+        for move_id in range(4032):
+            from_idx = move_id // 63
+            local = move_id % 63
+            to_idx = local if local < from_idx else local + 1
+
+            from_sq = self._agent._index_to_square(from_idx)
+            to_sq = self._agent._index_to_square(to_idx)
+
+            valid_score = float(move_valid[move_id])
+            if valid_score <= threshold:
+                continue
+
+            eval_score = move_evals[move_id]
+            decisive_score = move_decisive[move_id]
+            is_legal = (from_sq, to_sq) in actual_legal_moves
+
+            model_valid.append(
+                (eval_score, from_sq, to_sq, decisive_score, valid_score, is_legal)
+            )
+
+        model_valid.sort(key=lambda x: -x[0])
+        top_model_valid = model_valid[:10]
+
+        if not top_model_valid:
+            print("No moves predicted valid by the model at threshold 0.5.")
+        else:
+            for i, (
+                eval_score,
+                from_sq,
+                to_sq,
+                decisive_score,
+                valid_score,
+                is_legal,
+            ) in enumerate(top_model_valid):
+                print(
+                    f"{i + 1:2d}. {from_sq}{to_sq}: eval={eval_score:+.4f}, decisive={decisive_score:.4f}, valid={valid_score:.4f} {'✓' if is_legal else '✗'}"
+                )
+
+        # Calculate validity accuracy
+        true_positives = 0
+        false_positives = 0
+        true_negatives = 0
+        false_negatives = 0
+
+        predicted_valid = []
+        for move_id in range(4032):
+            from_idx = move_id // 63
+            local = move_id % 63
+            to_idx = local if local < from_idx else local + 1
+
+            from_sq = self._agent._index_to_square(from_idx)
+            to_sq = self._agent._index_to_square(to_idx)
+
+            is_predicted_valid = move_valid[move_id] > 0.5
+            is_actually_legal = (from_sq, to_sq) in actual_legal_moves
+
+            if is_predicted_valid and is_actually_legal:
+                true_positives += 1
+                predicted_valid.append((from_sq, to_sq, move_valid[move_id]))
+            elif is_predicted_valid and not is_actually_legal:
+                false_positives += 1
+                predicted_valid.append((from_sq, to_sq, move_valid[move_id]))
+            elif not is_predicted_valid and not is_actually_legal:
+                true_negatives += 1
+            elif not is_predicted_valid and is_actually_legal:
+                false_negatives += 1
+
+        # Derive a threshold that gives 100% precision (no illegal moves predicted).
+        scored = []
+        for move_id in range(4032):
+            from_idx = move_id // 63
+            local = move_id % 63
+            to_idx = local if local < from_idx else local + 1
+
+            from_sq = self._agent._index_to_square(from_idx)
+            to_sq = self._agent._index_to_square(to_idx)
+            score = float(move_valid[move_id])
+            is_legal = (from_sq, to_sq) in actual_legal_moves
+            scored.append((score, from_sq, to_sq, is_legal))
+
+        scored.sort(key=lambda x: -x[0])
+
+        prefix = []
+        for score, from_sq, to_sq, is_legal in scored:
+            if not is_legal:
+                break
+            prefix.append((from_sq, to_sq, score))
+
+        if prefix:
+            # Lowest score inside the precision=1.0 prefix
+            threshold_p1 = prefix[-1][2]
+        else:
+            threshold_p1 = 1.0
+
+        recall_p1 = len(prefix) / len(actual_legal_moves) if actual_legal_moves else 0.0
+
+        total = true_positives + false_positives + true_negatives + false_negatives
+        accuracy = (true_positives + true_negatives) / total if total > 0 else 0.0
+        precision = (
+            true_positives / (true_positives + false_positives)
+            if (true_positives + false_positives) > 0
+            else 0.0
+        )
+        recall = (
+            true_positives / (true_positives + false_negatives)
+            if (true_positives + false_negatives) > 0
+            else 0.0
+        )
+        f1 = (
+            2 * (precision * recall) / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
+
+        print("\n=== Validity Prediction Accuracy ===")
+        print(f"True Positives:  {true_positives}")
+        print(f"False Positives: {false_positives}")
+        print(f"True Negatives:  {true_negatives}")
+        print(f"False Negatives: {false_negatives}")
+        print(f"Accuracy:  {accuracy:.4f}")
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall:    {recall:.4f}")
+        print(f"F1 Score:  {f1:.4f}")
+
+        print("\n=== 100% Precision Mode ===")
+        print(f"Predicted Valid (precision=1.0): {len(prefix)}")
+        print(f"Recall at precision=1.0:        {recall_p1:.4f}")
+        print(f"Validity threshold (min score): {threshold_p1:.4f}")
+
+        if prefix:
+            print("\nMoves kept under precision=1.0:")
+            for from_sq, to_sq, score in prefix:
+                print(f"{from_sq}{to_sq}: {score:.4f} ✓")
+        else:
+            print("\nNo moves achieve precision=1.0 under current scoring.")
+
+        print(
+            f"\n=== Valid Moves According to Model (count: {len(predicted_valid)}) ==="
+        )
+        for from_sq, to_sq, score in sorted(predicted_valid, key=lambda x: -x[2]):
+            is_legal = (from_sq, to_sq) in actual_legal_moves
+            print(f"{from_sq}{to_sq}: {score:.4f} {'✓' if is_legal else '✗'}")
 
 
 def main() -> int:
@@ -485,12 +700,6 @@ def main() -> int:
     train_parser = subparsers.add_parser("train", help="Train a new model")
     train_parser.add_argument(
         "--username", type=str, required=True, help="Agent username"
-    )
-    train_parser.add_argument(
-        "--data-path",
-        type=str,
-        default="data/tactic_evals.csv",
-        help="Path to training data CSV (default: data/tactic_evals.csv)",
     )
     train_parser.add_argument(
         "--epochs", type=int, default=1, help="Number of training epochs (default: 1)"
@@ -520,12 +729,6 @@ def main() -> int:
         "--username", type=str, required=True, help="Agent username"
     )
     eval_parser.add_argument(
-        "--data-path",
-        type=str,
-        default="data/tactic_evals.csv",
-        help="Path to test data CSV (default: data/tactic_evals.csv)",
-    )
-    eval_parser.add_argument(
         "--test-split",
         type=float,
         default=0.2,
@@ -539,6 +742,14 @@ def main() -> int:
         type=int,
         default=42,
         help="Random seed for reproducibility (default: 42)",
+    )
+
+    # Predict command
+    predict_parser = subparsers.add_parser(
+        "predict", help="Predict on starting position"
+    )
+    predict_parser.add_argument(
+        "--username", type=str, required=True, help="Agent username"
     )
 
     args = parser.parse_args()
@@ -557,10 +768,8 @@ def main() -> int:
         web_client=None,
     )
 
-    # Create tester
     tester = NeuralNetworkPretrainer(
         agent=agent,
-        data_path=args.data_path,
         test_split=args.test_split,
         shuffle=not args.no_shuffle,
         random_seed=args.random_seed,
@@ -577,6 +786,11 @@ def main() -> int:
             logger.info("Starting evaluation...")
             results = tester.evaluate()
             logger.info("Evaluation complete: %s", results)
+            return 0
+
+        elif args.command == "predict":
+            logger.info("Predicting starting position...")
+            tester.predict_starting_position()
             return 0
 
     except Exception as e:

@@ -33,6 +33,10 @@ Use `data-testid` where available. When `data-testid` is not present, use the pr
 ## Game page / Replay page
 - Chess board: `[data-testid="chess-board"]`
 - Current FEN (hidden): `[data-testid="game-fen"]`
+- Last attempted move validity (hidden): `[data-testid="last-move-valid"]`
+  - Format: `<lastmove>:<validity>`
+    - `<lastmove>`: `<from><to>` or `none` when no attempt
+    - `<validity>`: `valid`, `invalid`, or `none`
 - Squares: `[data-square="<file><rank>"]` (e.g. `[data-square="e4"]`)
 - Active player panel: `.player-info--active`
 - Active clock: `.player-info-clock--active`

@@ -200,6 +200,20 @@ class ChessWebClient:
         element = self._locator(self._selectors.game_page.game_fen).first
         return element.inner_text()
 
+    def get_last_move_valid(self) -> tuple[str | None, bool]:
+        """Get the last attempted move validity indicator.
+
+        Returns:
+            Tuple of (lastmove, validity) where:
+            - lastmove: '<from><to>' (e.g., 'e2e4') or None
+            - validity: True if valid,
+        """
+        element = self._locator('[data-testid="last-move-valid"]').first
+        text = element.inner_text()
+        lastmove, validity = text.split(":", 1)
+        assert validity in ("valid", "invalid", "none")
+        return (lastmove if lastmove != "none" else None, validity == "valid")
+
     def get_time_remaining(self) -> int | None:
         """Get the time remaining on the active player's clock in seconds.
 

@@ -31,11 +31,57 @@ def weighted_mse(y_true, y_pred):
 
 @tf.keras.utils.register_keras_serializable()
 def validity_loss(y_true, y_pred):
-    """Binary crossentropy computed over all moves and reduced to a scalar."""
-    # Compute binary_crossentropy per element (batch, 4032, 1)
-    bce = tf.keras.losses.binary_crossentropy(y_true, y_pred)
-    # Reduce over the move dimension to get (batch,)
-    return tf.reduce_mean(bce, axis=-1)
+    """Dice Loss with explicit false-positive penalty.
+
+    Dice (soft F1) helps with class imbalance, but by itself it can still allow
+    too many false positives. Adding a penalty on predicted probability mass on
+    negative labels pushes precision up.
+    """
+    y_true = tf.cast(y_true, tf.float32)
+    y_pred = tf.cast(y_pred, tf.float32)
+
+    # Calculate intersection and sums over moves and channels
+    # Shape: (batch, 4032, 1) -> (batch,)
+    intersection = tf.reduce_sum(y_true * y_pred, axis=[1, 2])
+    sum_true = tf.reduce_sum(y_true, axis=[1, 2])
+    sum_pred = tf.reduce_sum(y_pred, axis=[1, 2])
+
+    epsilon = tf.keras.backend.epsilon()
+    dice = (2.0 * intersection + epsilon) / (sum_true + sum_pred + epsilon)
+
+    dice_loss = 1.0 - dice  # (batch,)
+
+    # False-positive penalty: average predicted probability on negatives.
+    # This is 0 when all negatives are predicted 0.
+    neg_mass = tf.reduce_sum((1.0 - y_true) * y_pred, axis=[1, 2])
+    neg_count = tf.reduce_sum(1.0 - y_true, axis=[1, 2])
+    fp_penalty = neg_mass / (neg_count + epsilon)  # (batch,)
+
+    # Stronger penalty to force precision to 100%
+    fp_weight = 5.0
+
+    return tf.reduce_mean(dice_loss + fp_weight * fp_penalty)
+
+
+@tf.keras.utils.register_keras_serializable()
+def f1_score(y_true, y_pred):
+    """F1 score metric for binary classification."""
+    # Threshold predictions at 0.5
+    y_pred_binary = tf.cast(y_pred > 0.5, tf.float32)
+
+    # Calculate true positives, false positives, false negatives
+    tp = tf.reduce_sum(y_true * y_pred_binary)
+    fp = tf.reduce_sum((1 - y_true) * y_pred_binary)
+    fn = tf.reduce_sum(y_true * (1 - y_pred_binary))
+
+    # Calculate precision and recall
+    precision = tp / (tp + fp + tf.keras.backend.epsilon())
+    recall = tp / (tp + fn + tf.keras.backend.epsilon())
+
+    # Calculate F1 score
+    f1 = 2 * (precision * recall) / (precision + recall + tf.keras.backend.epsilon())
+
+    return f1
 
 
 class NeuralNetworkAgent(TrainableAgent):
@@ -98,10 +144,12 @@ class NeuralNetworkAgent(TrainableAgent):
 
         x = tf.keras.layers.Reshape((8, 8, -1))(inputs)
         state = x
-        for _ in range(1):
-            x = tf.keras.layers.ZeroPadding2D(padding=1)(state)
-            x = tf.keras.layers.Conv2D(1, 3, activation="relu")(x)
+        for _ in range(4):
+            x = tf.keras.layers.ZeroPadding2D(padding=1)(x)
+            x = tf.keras.layers.Conv2D(4, 3, activation="relu")(x)
             state = tf.keras.layers.Concatenate()([state, x])
+            state = tf.keras.layers.BatchNormalization()(state)
+            x = state
         x = tf.keras.layers.Conv2D(1, 3)(x)
         x = tf.keras.layers.Flatten()(x)
 
@@ -129,7 +177,11 @@ class NeuralNetworkAgent(TrainableAgent):
             loss=[weighted_mse, validity_loss],
             metrics={
                 "eval": tf.keras.metrics.MeanAbsoluteError(name="mae"),
-                "valid": tf.keras.metrics.BinaryAccuracy(name="acc"),
+                "valid": [
+                    f1_score,
+                    tf.keras.metrics.Precision(name="precision"),
+                    tf.keras.metrics.Recall(name="recall"),
+                ],
             },
         )
 
@@ -180,6 +232,12 @@ class NeuralNetworkAgent(TrainableAgent):
             if from_idx not in our_square_indices:
                 continue
 
+            # Skip moves we've already attempted in this exact position
+            from_sq = self._index_to_square(from_idx)
+            to_sq = self._index_to_square(to_idx)
+            if (from_sq, to_sq) in self._made_decisions:
+                continue
+
             validity_score = float(valid_pred[move_id][0])
             candidates.append(
                 (
@@ -195,6 +253,12 @@ class NeuralNetworkAgent(TrainableAgent):
 
         # Filter by validity threshold
         valid_candidates = [c for c in candidates if c[0] >= 0.5]
+
+        if not valid_candidates:
+            logger.warning(
+                "No valid moves found above threshold; using all candidates",
+                extra={"username": self.username},
+            )
 
         # Fallback to all candidates if no valid moves found
         final_pool = valid_candidates if valid_candidates else candidates
