@@ -45,7 +45,8 @@ class NeuralNetworkPretrainer:
         test_split: float = 0.2,
         shuffle: bool = True,
         random_seed: int = 42,
-        max_samples: int = 100_000,
+        max_samples: int = 50_000,
+        read_limit: int = 500_000,
     ) -> None:
         self._agent = agent
         self._data_path = Path(data_path)
@@ -53,6 +54,7 @@ class NeuralNetworkPretrainer:
         self._shuffle = shuffle
         self._random_seed = random_seed
         self._max_samples = max_samples
+        self._read_limit = read_limit
         self._train_indices: list[int] | None = None
         self._test_indices: list[int] | None = None
         self._total_samples: int = 0
@@ -144,9 +146,13 @@ class NeuralNetworkPretrainer:
                     "Expected header with at least three columns: FEN,Evaluation,Move"
                 )
 
+            rows_read = 0
             for row in reader:
+                rows_read += 1
                 if self._parse_row(row) is not None:
                     valid_count += 1
+                    if rows_read >= self._read_limit:
+                        break
 
         if valid_count == 0:
             raise ValueError("No valid data rows found in CSV")
@@ -196,7 +202,9 @@ class NeuralNetworkPretrainer:
             # Skip header
             next(reader, None)
 
+            rows_read = 0
             for row in reader:
+                rows_read += 1
                 if mode == "moves":
                     result = self._parse_row(row)
                 elif mode == "validity":
@@ -208,6 +216,9 @@ class NeuralNetworkPretrainer:
                     if current_idx in index_set:
                         yield result
                     current_idx += 1
+
+                if rows_read >= self._read_limit:
+                    break
 
     def _create_dataset(self, indices: list[int], batch_size: int) -> tf.data.Dataset:
         """Create a TensorFlow Dataset from the given indices."""
@@ -702,25 +713,10 @@ def main() -> int:
         "--username", type=str, required=True, help="Agent username"
     )
     train_parser.add_argument(
-        "--epochs", type=int, default=1, help="Number of training epochs (default: 1)"
-    )
-    train_parser.add_argument(
-        "--batch-size", type=int, default=32, help="Training batch size (default: 32)"
-    )
-    train_parser.add_argument(
-        "--test-split",
-        type=float,
-        default=0.2,
-        help="Fraction of data to use for testing (default: 0.2)",
-    )
-    train_parser.add_argument(
-        "--no-shuffle", action="store_true", help="Disable shuffling of training data"
-    )
-    train_parser.add_argument(
-        "--random-seed",
+        "--read-limit",
         type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)",
+        default=None,
+        help="Maximum raw CSV rows to read when scanning/loading (stop early)",
     )
 
     # Evaluate command
@@ -729,19 +725,10 @@ def main() -> int:
         "--username", type=str, required=True, help="Agent username"
     )
     eval_parser.add_argument(
-        "--test-split",
-        type=float,
-        default=0.2,
-        help="Fraction of data to use for testing (default: 0.2)",
-    )
-    eval_parser.add_argument(
-        "--no-shuffle", action="store_true", help="Disable shuffling of data"
-    )
-    eval_parser.add_argument(
-        "--random-seed",
+        "--read-limit",
         type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)",
+        default=None,
+        help="Maximum raw CSV rows to read when scanning/loading (stop early)",
     )
 
     # Predict command
@@ -768,17 +755,12 @@ def main() -> int:
         web_client=None,
     )
 
-    tester = NeuralNetworkPretrainer(
-        agent=agent,
-        test_split=args.test_split,
-        shuffle=not args.no_shuffle,
-        random_seed=args.random_seed,
-    )
+    tester = NeuralNetworkPretrainer(agent=agent)
 
     try:
         if args.command == "train":
             logger.info("Starting training...")
-            tester.train(epochs=args.epochs, batch_size=args.batch_size)
+            tester.train()
             logger.info("Training complete")
             return 0
 

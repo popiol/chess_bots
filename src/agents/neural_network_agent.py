@@ -144,13 +144,13 @@ class NeuralNetworkAgent(TrainableAgent):
 
         x = tf.keras.layers.Reshape((8, 8, -1))(inputs)
         state = x
-        for _ in range(4):
+        for _ in range(10):
             x = tf.keras.layers.ZeroPadding2D(padding=1)(x)
-            x = tf.keras.layers.Conv2D(4, 3, activation="relu")(x)
+            x = tf.keras.layers.Conv2D(10, 3, activation="relu")(x)
             state = tf.keras.layers.Concatenate()([state, x])
             state = tf.keras.layers.BatchNormalization()(state)
             x = state
-        x = tf.keras.layers.Conv2D(1, 3)(x)
+        x = tf.keras.layers.Conv2D(10, 3)(x)
         x = tf.keras.layers.Flatten()(x)
 
         # Head 1: Moves (Evaluation & Decisive)
