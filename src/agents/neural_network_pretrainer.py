@@ -288,6 +288,7 @@ class NeuralNetworkPretrainer:
             )
             .batch(batch_size)
             .prefetch(tf.data.AUTOTUNE)
+            .repeat()
         )
 
         # 2. Validity Dataset (trains output_valid, ignores output_moves)
@@ -322,25 +323,35 @@ class NeuralNetworkPretrainer:
             .repeat()
         )
 
-        # Training Loop: Alternate between tasks per epoch
-        for epoch in range(epochs):
-            # logger.info(f"Epoch {epoch + 1}/{epochs} - Task: Evaluation/Decisive")
-            # self._agent.model.fit(
-            #     moves_dataset,
-            #     initial_epoch=epoch,
-            #     epochs=epoch + 1,
-            #     steps_per_epoch=steps_per_epoch,
-            #     verbose=1,
-            # )
+        # Training Loop: alternate between validity and evaluation every batch.
+        # Maintain the same total work: each epoch previously ran
+        # `steps_per_epoch` validity batches and `steps_per_epoch` moves batches.
+        total_batches_per_epoch = steps_per_epoch * 2
+        total_batches = epochs * total_batches_per_epoch
 
-            logger.info(f"Epoch {epoch + 1}/{epochs} - Task: Validity")
-            self._agent.model.fit(
-                valid_dataset,
-                initial_epoch=epoch,
-                epochs=epoch + 1,  # Note: this just continues training
-                steps_per_epoch=steps_per_epoch,
-                verbose=1,
+        moves_iter = iter(moves_dataset)
+        valid_iter = iter(valid_dataset)
+
+        for batch_idx in range(total_batches):
+            # even -> validity, odd -> moves (so we start with validity as before)
+            if batch_idx % 2 == 0:
+                x_batch, y_tuple, w_tuple = next(valid_iter)
+            else:
+                x_batch, y_tuple, w_tuple = next(moves_iter)
+
+            # Train on this single batch for both heads; pass per-output sample weights
+            # so only the intended head contributes to the loss this batch.
+            result = self._agent.model.train_on_batch(
+                x_batch,
+                y_tuple,
+                sample_weight=w_tuple,  # type: ignore
             )
+            assert isinstance(result, list)
+
+            # Map train_on_batch result directly to model.metrics_names.
+            # names = self._agent.model.metrics_names
+            # info = {n: float(v) for n, v in zip(names, result)}
+            # logger.info("Batch %d/%d metrics: %s", batch_idx + 1, total_batches, info)
 
         # Save the trained models
         model_path = Path(self._agent.model_file_path)

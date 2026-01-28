@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -107,31 +105,13 @@ class NeuralNetworkAgent(TrainableAgent):
             )
             self.model = tf.keras.models.load_model(model_path)
         else:
+            base_path = Path("models/base.keras")
             logger.info(
-                "Model file not found at %s, creating new model",
-                model_path,
+                "Loading base model from %s",
+                base_path,
                 extra={"username": self.username},
             )
-
-            self.model = self.create_model()
-
-            logger.info(
-                "Starting background pretraining for new model",
-                extra={"username": self.username},
-            )
-
-            subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "src.agents.neural_network_pretrainer",
-                    "train",
-                    "--username",
-                    self.username,
-                ]
-            )
-
-            self._stage = "done"
+            self.model = tf.keras.models.load_model(base_path)
 
     def create_model(self):
         """Create and return a new TensorFlow model.
