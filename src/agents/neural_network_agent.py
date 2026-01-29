@@ -6,7 +6,11 @@ from pathlib import Path
 import numpy as np
 import tensorflow as tf
 
-from src.agents.trainable_agent import PredictionResult, TrainableAgent
+from src.agents.trainable_agent import (
+    PIECE_TYPE_TO_INDEX,
+    PredictionResult,
+    TrainableAgent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -183,9 +187,25 @@ class NeuralNetworkAgent(TrainableAgent):
             to_idx = local + 1
         return from_idx, to_idx
 
-    def _predict(
-        self, features: np.ndarray, our_squares: list[str]
-    ) -> list[PredictionResult]:
+    # Files and ranks for square name conversion
+    FILES = "abcdefgh"
+    RANKS = "12345678"
+
+    def _index_to_square(self, index: int) -> str:
+        """Convert square index (0-63) to square name (a1-h8)."""
+        file_idx = index % 8
+        rank_idx = index // 8
+        return f"{self.FILES[file_idx]}{self.RANKS[rank_idx]}"
+
+    def _square_to_index(self, square: str) -> int:
+        """Convert square name (a1-h8) to square index (0-63)."""
+        file = square[0]
+        rank = square[1]
+        file_idx = self.FILES.index(file)
+        rank_idx = self.RANKS.index(rank)
+        return rank_idx * 8 + file_idx
+
+    def _predict(self, fen: str, our_squares: list[str]) -> list[PredictionResult]:
         if self.model is None:
             raise RuntimeError(
                 "Model is not initialized. Load or create the model first."
@@ -193,7 +213,8 @@ class NeuralNetworkAgent(TrainableAgent):
 
         assert our_squares, "our_squares cannot be empty"
 
-        # Run the model to get move scores
+        # Encode fen and run the model to get move scores
+        features = self._encode_fen(fen)
         inputs = np.asarray(features, dtype=np.float32).reshape(1, -1)
         # Model returns [moves_pred, valid_pred]
         predictions_raw = self.model.predict(inputs, verbose=0)
@@ -223,8 +244,8 @@ class NeuralNetworkAgent(TrainableAgent):
                 (
                     validity_score,
                     PredictionResult(
-                        from_idx=from_idx,
-                        to_idx=to_idx,
+                        from_sq=self._index_to_square(from_idx),
+                        to_sq=self._index_to_square(to_idx),
                         evaluation=float(eval_val),
                         decisive=float(dec_val),
                     ),
@@ -248,6 +269,49 @@ class NeuralNetworkAgent(TrainableAgent):
 
         # Return top N predictions
         return [c[1] for c in final_pool[: self.prediction_count]]
+
+    def _encode_fen(self, fen: str) -> np.ndarray:
+        """Encode FEN string as numerical features for the neural network.
+
+        Returns a flattened 8x8x12 array where channels 0-5 are our pieces and
+        6-11 are opponent pieces. The active color in the FEN determines which
+        side is considered "our" pieces.
+        """
+        parts = fen.split()
+        if len(parts) < 2:
+            raise ValueError(
+                f"Invalid FEN string provided (missing active color): {fen}"
+            )
+
+        board_part = parts[0]
+        board = np.zeros((8, 8, 12), dtype=np.float32)
+
+        active_color = parts[1]
+        our_pieces_are_uppercase = active_color == "w"
+
+        rows = board_part.split("/")
+        for rank_idx, row in enumerate(rows):
+            file_idx = 0
+            for char in row:
+                if char.isdigit():
+                    file_idx += int(char)
+                else:
+                    piece_type = char.upper()
+                    if piece_type in PIECE_TYPE_TO_INDEX:
+                        piece_type_idx = PIECE_TYPE_TO_INDEX[piece_type]
+
+                        is_uppercase = char.isupper()
+                        is_our_piece = is_uppercase == our_pieces_are_uppercase
+
+                        if is_our_piece:
+                            piece_idx = piece_type_idx
+                        else:
+                            piece_idx = piece_type_idx + 6
+
+                        board[7 - rank_idx, file_idx, piece_idx] = 1.0
+                    file_idx += 1
+
+        return board.flatten()
 
     def _on_game_end(self, score: int | None, reason: str | None) -> None:
         """Called when the game ends. Trains the model based on the game result."""
@@ -274,12 +338,12 @@ class NeuralNetworkAgent(TrainableAgent):
             move_indices = []
 
             for decision in self._decision_history:
-                inputs.append(decision.features)
+                inputs.append(self._encode_fen(decision.fen))
                 move = decision.move  # PredictionResult
 
-                # Calculate move_id
-                from_idx = move.from_idx
-                to_idx = move.to_idx
+                # Calculate move_id by converting square names to indices
+                from_idx = self._square_to_index(move.from_sq)
+                to_idx = self._square_to_index(move.to_sq)
 
                 move_id = self._move_to_id(from_idx, to_idx)
                 move_indices.append(move_id)

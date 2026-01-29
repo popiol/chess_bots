@@ -4,7 +4,7 @@ import logging
 import random
 from dataclasses import dataclass, field
 
-import numpy as np
+import chess
 
 from src.agents.playable_agent import PlayableAgent
 
@@ -20,17 +20,15 @@ PIECE_TYPE_TO_INDEX = {
     "K": 5,  # King
 }
 
-# Square name to index mapping (a1=0, b1=1, ..., h8=63)
-FILES = ["a", "b", "c", "d", "e", "f", "g", "h"]
-RANKS = ["1", "2", "3", "4", "5", "6", "7", "8"]
+# NOTE: index<->square helpers have been moved to NeuralNetworkAgent.
 
 
 @dataclass
 class PredictionResult:
     """Result of a move prediction."""
 
-    from_idx: int  # Source square index (0-63)
-    to_idx: int  # Destination square index (0-63)
+    from_sq: str  # Source square name like 'e2'
+    to_sq: str  # Destination square name like 'e4'
     evaluation: float  # Position evaluation (-1 to 1)
     decisive: float  # Decisiveness of the move (0 to 1)
 
@@ -39,24 +37,24 @@ class PredictionResult:
 class AnalysisNode:
     """Node in the position analysis tree.
 
-    Represents a chess position with predictions and potential continuations.
+    Represents a chess position (by FEN) with predictions and potential continuations.
     """
 
-    features: np.ndarray
+    fen: str
     predictions: list[PredictionResult]
     parent: AnalysisNode | None = None
     parent_move: PredictionResult | None = (
         None  # Move from parent that led to this node
     )
-    children: dict[tuple[int, int], AnalysisNode] = field(default_factory=dict)
-    # children maps (from_square_idx, to_square_idx) -> resulting position node
+    children: dict[tuple[str, str], AnalysisNode] = field(default_factory=dict)
+    # children maps (from_square, to_square) -> resulting position node
 
 
 @dataclass
 class Decision:
     """Record of a decision made by the agent."""
 
-    features: np.ndarray
+    fen: str
     move: PredictionResult
 
 
@@ -104,18 +102,17 @@ class TrainableAgent(PlayableAgent):
             Tuple of (from_square, to_square, evaluation, decisive) or None if no move chosen
         """
 
-        logger.info(
+        logger.debug(
             "Deciding move for FEN: %s", current_fen, extra={"username": self.username}
         )
 
         # Initialize analysis if not present
         if self._analysis is None:
-            features = self._encode_fen(current_fen)
-            our_squares = self._extract_our_squares_from_features(features)
+            our_squares = self._extract_our_squares_from_fen(current_fen)
             assert our_squares, "No pieces found for our color"
-            moves = self._predict(features, our_squares)
+            moves = self._predict(current_fen, our_squares)
             assert moves, "Predict returned no moves"
-            self._analysis = AnalysisNode(features=features, predictions=moves)
+            self._analysis = AnalysisNode(fen=current_fen, predictions=moves)
             self._expansion_queue = [self._analysis]
             logger.debug(
                 "Initialized analysis with %d predictions",
@@ -129,22 +126,15 @@ class TrainableAgent(PlayableAgent):
                 self._analysis.predictions,
                 key=lambda m: m.evaluation + self._aggression * m.decisive,
             )
-            from_square_idx = best_move.from_idx
-            to_square_idx = best_move.to_idx
+            from_square = best_move.from_sq
+            to_square = best_move.to_sq
             evaluation = best_move.evaluation
             decisive = best_move.decisive
 
-            # Track features and best move
+            # Track FEN and best move
             self._decision_history.append(
-                Decision(
-                    features=self._analysis.features.copy(),
-                    move=best_move,
-                )
+                Decision(fen=self._analysis.fen, move=best_move)
             )
-
-            # Decode square indices back to square names
-            from_square = self._index_to_square(from_square_idx)
-            to_square = self._index_to_square(to_square_idx)
 
             # Clear analysis for next position
             self._analysis = None
@@ -166,11 +156,7 @@ class TrainableAgent(PlayableAgent):
         return None
 
     def _expand_analysis(self) -> None:
-        """Expand the analysis tree by one node using BFS.
-
-        Called when we have enough time to do deeper position analysis.
-        Processes one node per tick.
-        """
+        """Expand the analysis tree by one node using BFS."""
 
         logger.debug(
             "Expanding analysis tree, queue size: %d",
@@ -190,45 +176,27 @@ class TrainableAgent(PlayableAgent):
 
         # Find a move that hasn't been expanded yet
         for move in node.predictions:
-            from_idx = move.from_idx
-            to_idx = move.to_idx
-            move_key = (from_idx, to_idx)
+            from_sq = move.from_sq
+            to_sq = move.to_sq
+            move_key = (from_sq, to_sq)
 
             if move_key in node.children:
                 continue
 
             # This move hasn't been expanded - create child node
-            from_square = self._index_to_square(from_idx)
-            to_square = self._index_to_square(to_idx)
+            from_square = from_sq
+            to_square = to_sq
 
-            # Apply move to features to get new position
-            new_features = self._apply_move_to_features(node.features, from_idx, to_idx)
-            if new_features is None:
-                # Invalid move or not implemented, create node with no predictions
-                child_node = AnalysisNode(
-                    features=node.features,
-                    predictions=[],
-                    parent=node,
-                    parent_move=move,
-                )
-                node.children[move_key] = child_node
-                # Don't add to expansion queue since there's nothing to expand
-                logger.debug(
-                    "Move %s->%s invalid, created empty node",
-                    from_square,
-                    to_square,
-                    extra={"username": self.username},
-                )
-                return
+            # Apply move to FEN to get new position. Let exceptions propagate on invalid moves.
+            new_fen = self._apply_move_to_fen(node.fen, from_sq, to_sq)
 
             # Predict for the new position
-            # Extract our_squares from features (channels 0-5 contain our pieces)
-            new_our_squares = self._extract_our_squares_from_features(new_features)
-            new_predictions = self._predict(new_features, new_our_squares)
+            new_our_squares = self._extract_our_squares_from_fen(new_fen)
+            new_predictions = self._predict(new_fen, new_our_squares)
 
             # Create child node
             child_node = AnalysisNode(
-                features=new_features,
+                fen=new_fen,
                 predictions=new_predictions,
                 parent=node,
                 parent_move=move,
@@ -271,12 +239,14 @@ class TrainableAgent(PlayableAgent):
         Args:
             node: The node whose predictions should be propagated to its parents
         """
+
+        # Nothing to propagate if no predictions
+        if not node.predictions:
+            return
+
         current = node
         while current.parent is not None:
             # Calculate average evaluation and decisive from current node's predictions
-            if not current.predictions:
-                # No predictions, can't propagate
-                break
 
             avg_eval = sum(m.evaluation for m in current.predictions) / len(
                 current.predictions
@@ -286,9 +256,7 @@ class TrainableAgent(PlayableAgent):
             )
 
             # Update parent's move that led to current node
-            parent = current.parent
-            if current.parent_move is None:
-                break
+            assert current.parent_move is not None
 
             logger.debug(
                 "Updating parent move eval: %.2f -> %.2f, decisive: %.2f -> %.2f",
@@ -304,86 +272,38 @@ class TrainableAgent(PlayableAgent):
             current.parent_move.decisive = avg_decisive
 
             # Move up the tree
-            current = parent
+            current = current.parent
 
-    def _apply_move_to_features(
-        self, features: np.ndarray, from_idx: int, to_idx: int
-    ) -> np.ndarray | None:
-        """Apply a move to position features and return the resulting features.
+    def _apply_move_to_fen(self, fen: str, from_sq: str, to_sq: str) -> str:
+        """Apply a move (given as square-name strings) to a FEN and return the new FEN."""
 
-        Args:
-            features: Current position features (768-dim array)
-            from_idx: Source square index (0-63)
-            to_idx: Destination square index (0-63)
+        board = chess.Board(fen)
+        move = chess.Move.from_uci(f"{from_sq}{to_sq}")
+        board.push(move)
+        return board.fen()
 
-        Returns:
-            New features array after applying the move, or None if move is invalid
-        """
-        # Copy and reshape to 8x8x12
-        board = features.reshape(8, 8, 12).copy()
-
-        # Calculate square positions
-        from_rank = from_idx // 8
-        from_file = from_idx % 8
-        to_rank = to_idx // 8
-        to_file = to_idx % 8
-
-        # Check if there's a piece at the source square (in our pieces channels 0-5)
-        if not board[from_rank, from_file, 0:6].any():
-            # No piece at source square, invalid move
-            return None
-
-        # Move the piece: copy our piece from source to destination
-        board[to_rank, to_file, 0:6] = board[from_rank, from_file, 0:6]
-        # Clear the source square for our pieces
-        board[from_rank, from_file, 0:6] = 0
-        # Clear any captured opponent piece at destination
-        board[to_rank, to_file, 6:12] = 0
-
-        # Switch our/opponent pieces (next move is by opponent)
-        # Swap channels 0-5 with channels 6-11
-        new_board = board.copy()
-        new_board[:, :, 0:6] = board[:, :, 6:12]
-        new_board[:, :, 6:12] = board[:, :, 0:6]
-
-        # Flatten back to 768 dimensions
-        return new_board.flatten()
-
-    def _predict(
-        self, features: np.ndarray, our_squares: list[str]
-    ) -> list[PredictionResult]:
-        """Predict candidate moves and evaluations using the model.
+    def _predict(self, fen: str, our_squares: list[str]) -> list[PredictionResult]:
+        """Fallback predictor used by simpler TrainableAgent subclasses.
 
         Args:
-            features: Encoded board features (768-dimensional array from _encode_fen)
-            our_squares: List of square names where our pieces are located (e.g., ['e2', 'g1'])
+            fen: FEN string for the current position (may be unused by simple agents)
+            our_squares: List of square names where our pieces are located
 
         Returns:
-            List of PredictionResult objects containing:
-            - from_idx: 0-63 index of source square
-            - to_idx: 0-63 index of destination square
-            - evaluation: -1 (losing) to 1 (winning)
-            - decisive: 0 (unclear) to 1 (decisive)
-
-            The best move (highest evaluation) will be selected by _decide_move.
+            List[PredictionResult] with randomized moves (simple heuristic).
         """
         assert our_squares, "our_squares cannot be empty"
 
-        # Convert our_squares to indices
-        our_square_indices = [self._square_to_index(square) for square in our_squares]
-
         moves = []
         for _ in range(self.prediction_count):
-            # Use valid piece square
-            from_square_idx = random.choice(our_square_indices)
-
-            to_square_idx = random.randint(0, 63)
+            from_square = random.choice(our_squares)
+            to_square = chess.square_name(random.randint(0, 63))
             evaluation = random.uniform(-1.0, 1.0)
             decisive = random.uniform(0.0, 1.0)
             moves.append(
                 PredictionResult(
-                    from_idx=from_square_idx,
-                    to_idx=to_square_idx,
+                    from_sq=from_square,
+                    to_sq=to_square,
                     evaluation=evaluation,
                     decisive=decisive,
                 )
@@ -395,111 +315,20 @@ class TrainableAgent(PlayableAgent):
 
         return moves
 
-    def _encode_fen(self, fen: str) -> np.ndarray:
-        """Utility method to encode FEN string as numerical features.
-
-        This is provided as a convenience for neural network implementations.
-        Models using hardcoded rules don't need to call this method.
+    def _extract_our_squares_from_fen(self, fen: str) -> list[str]:
+        """Extract squares with our pieces from a FEN string.
 
         Args:
-            fen: FEN string representing current position
-
-        Returns:
-            NumPy array of 768 features: 8x8x12 board
-            - Indices 0-5: our pieces (pawn, knight, bishop, rook, queen, king)
-            - Indices 6-11: opponent pieces (pawn, knight, bishop, rook, queen, king)
-        """
-        # Parse FEN components
-        parts = fen.split()
-        if len(parts) < 2:
-            raise ValueError(
-                f"Invalid FEN string provided (missing active color): {fen}"
-            )
-
-        board_part = parts[0]
-
-        # Board representation: 8x8x12 (6 our piece types + 6 opponent piece types)
-        board = np.zeros((8, 8, 12), dtype=np.float32)
-
-        # Determine which pieces are ours based on active color in FEN
-        # The second field in FEN is active color ('w' or 'b')
-        active_color = parts[1]
-        our_pieces_are_uppercase = active_color == "w"
-
-        rows = board_part.split("/")
-        for rank_idx, row in enumerate(rows):
-            file_idx = 0
-            for char in row:
-                if char.isdigit():
-                    file_idx += int(char)
-                else:
-                    piece_type = char.upper()
-                    if piece_type in PIECE_TYPE_TO_INDEX:
-                        piece_type_idx = PIECE_TYPE_TO_INDEX[piece_type]
-
-                        # Determine if this is our piece or opponent's piece
-                        is_uppercase = char.isupper()
-                        is_our_piece = is_uppercase == our_pieces_are_uppercase
-
-                        # Our pieces: indices 0-5, opponent pieces: indices 6-11
-                        if is_our_piece:
-                            piece_idx = piece_type_idx
-                        else:
-                            piece_idx = piece_type_idx + 6
-
-                        # FEN rows are ordered from rank 8 down to rank 1. Store so that
-                        # board[0] corresponds to rank1 (a1-h1) to match other helpers.
-                        board[7 - rank_idx, file_idx, piece_idx] = 1.0
-                    file_idx += 1
-
-        # Flatten board
-        return board.flatten()
-
-    def _index_to_square(self, index: int) -> str:
-        """Convert square index (0-63) to square name (a1-h8).
-
-        Args:
-            index: Square index from 0 (a1) to 63 (h8)
-
-        Returns:
-            Square name like 'e4'
-        """
-        file_idx = index % 8
-        rank_idx = index // 8
-        return f"{FILES[file_idx]}{RANKS[rank_idx]}"
-
-    def _square_to_index(self, square: str) -> int:
-        """Convert square name (a1-h8) to square index (0-63).
-
-        Args:
-            square: Square name like 'e4'
-
-        Returns:
-            Square index from 0 (a1) to 63 (h8)
-        """
-        file = square[0]
-        rank = square[1]
-        file_idx = FILES.index(file)
-        rank_idx = RANKS.index(rank)
-        return rank_idx * 8 + file_idx
-
-    def _extract_our_squares_from_features(self, features: np.ndarray) -> list[str]:
-        """Extract squares with our pieces from features array.
-
-        Args:
-            features: Encoded board features (768-dimensional array)
+            fen: FEN string
 
         Returns:
             List of square names where our pieces are located (e.g., ['e2', 'g1'])
         """
-        board = features.reshape(8, 8, 12)
-        our_squares = []
+        board = chess.Board(fen)
 
-        for rank_idx in range(8):
-            for file_idx in range(8):
-                # Check if there's any piece in our channels (0-5)
-                if board[rank_idx, file_idx, 0:6].any():
-                    square = f"{FILES[file_idx]}{RANKS[rank_idx]}"
-                    our_squares.append(square)
+        our_squares: list[str] = []
+        for sq, piece in board.piece_map().items():
+            if piece.color == board.turn:
+                our_squares.append(chess.square_name(sq))
 
         return our_squares

@@ -34,6 +34,7 @@ class PlayableAgent(CustomizableAgent):
         self._is_thinking: bool = False  # True when still thinking about current move
         self._current_fen: str | None = None  # Current position FEN
         self._made_decisions: list[tuple[str, str]] = []
+        self._resigned: bool = False
 
     def _handle_move_failure(self, fen: str, from_square: str, to_square: str) -> None:
         """Handle a move execution failure (e.g. invalid move)."""
@@ -82,6 +83,15 @@ class PlayableAgent(CustomizableAgent):
                     extra={"username": self.username},
                 )
 
+        if self._resigned:
+            logger.info("Confirming resign", extra={"username": self.username})
+            self._web_client.resign_confirm()
+            return
+
+        # Get current position (skip fetch if we're already thinking about a move)
+        if not self._is_thinking:
+            self._current_fen = self._web_client.get_current_fen()
+
         # If we made a move, check if it was successful
         if self._made_decisions and not self._is_thinking:
             valid = True
@@ -104,6 +114,12 @@ class PlayableAgent(CustomizableAgent):
                 self._last_calculation_time = None
                 self._made_decisions.clear()
             else:
+                logger.info(
+                    "Move invalid %s -> %s",
+                    self._last_from_square,
+                    self._last_to_square,
+                    extra={"username": self.username},
+                )
                 assert (
                     self._fen_before_move
                     and self._last_from_square
@@ -127,20 +143,9 @@ class PlayableAgent(CustomizableAgent):
                     self._draw_threshold,
                     extra={"username": self.username},
                 )
-                self._decision = "offer_draw"
+                self._web_client.offer_draw()
                 self._last_decisive = None
             return
-
-        # Get current position (skip fetch if we're already thinking about a move)
-        if not self._is_thinking:
-            try:
-                self._current_fen = self._web_client.get_current_fen()
-            except Exception:
-                logger.warning(
-                    "Failed to get FEN, trying again",
-                    extra={"username": self.username},
-                )
-                return
 
         # It's our turn - get time remaining
         self._time_remaining = self._web_client.get_time_remaining()
@@ -160,7 +165,7 @@ class PlayableAgent(CustomizableAgent):
                 self._allocated_time = self._time_remaining / expected_moves_remaining
             self._last_calculation_time = time.time()
 
-            logger.info(
+            logger.debug(
                 "Time remaining: %d seconds, move %d, allocated: %.2f seconds",
                 self._time_remaining,
                 self._moves_made + 1,
@@ -188,7 +193,8 @@ class PlayableAgent(CustomizableAgent):
                 self._resign_threshold,
                 extra={"username": self.username},
             )
-            self._decision = "resign"
+            self._web_client.resign()
+            self._resigned = True
             return
 
         # Check if opponent offered draw and we should accept based on decisive value
@@ -202,7 +208,8 @@ class PlayableAgent(CustomizableAgent):
                 self._draw_threshold,
                 extra={"username": self.username},
             )
-            self._decision = "accept_draw"
+            self._web_client.accept_draw()
+            self._stage = "done"
             return
 
         # Store decisive value to potentially offer draw on opponent's turn

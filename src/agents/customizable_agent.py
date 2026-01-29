@@ -144,18 +144,28 @@ class CustomizableAgent(Agent, ABC):
             return
 
         if not self._web_client.is_post_login_ready():
-            # If we've been waiting too long, proceed anyway to avoid stalling
+            # Timeout exceeded
             if current_time - self._last_stage_change_time >= self._post_login_timeout:
-                logger.warning(
-                    "Post-login readiness wait exceeded %.1f seconds, proceeding to auth",
-                    self._post_login_timeout,
-                    extra={"username": self.username},
-                )
-                self._stage = "auth"
-                self._registered = True  # Assume registered if registration failed
-                self._auth_action = None
-                self._last_stage_change_time = current_time
-                return
+                if self._auth_action == "signed_up":
+                    # Sign-up failed - assume registered and proceed to sign-in
+                    logger.warning(
+                        "Post-login readiness wait exceeded %.1f seconds, proceeding to auth",
+                        self._post_login_timeout,
+                        extra={"username": self.username},
+                    )
+                    self._stage = "auth"
+                    self._registered = True
+                    self._auth_action = None
+                    self._last_stage_change_time = current_time
+                    return
+                else:
+                    # Sign-in failed - end session
+                    logger.warning(
+                        "Sign-in failed, ending session",
+                        extra={"username": self.username},
+                    )
+                    self.session_done = True
+                    return
 
             # Log every 5 seconds while waiting
             if current_time - self._last_post_login_log_time >= 5.0:

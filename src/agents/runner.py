@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
 from src.agents.manager import AgentManager
 from src.db.repository import AgentRepository
 from src.web.config import BrowserConfig
@@ -30,8 +32,8 @@ class UsernameFilter(logging.Filter):
 
 @dataclass(frozen=True)
 class RunnerConfig:
-    create_interval_seconds: float = 24 * 3600.0  # How often to try creating agents
-    start_interval_seconds: float = 180.0  # How often to try starting sessions
+    create_interval_seconds: float = 60.0  # How often to try creating agents
+    start_interval_seconds: float = 30.0  # How often to try starting sessions
     max_active_sessions: int = 20
 
 
@@ -84,24 +86,36 @@ class AgentRunner:
         self._create_random_agent()
 
     def _maybe_start_session(self) -> None:
-        current_time = time.time()
-        if current_time - self._last_start_time < self._config.start_interval_seconds:
-            return
-        if self._manager.active_session_count() >= self._config.max_active_sessions:
-            return
-        self._last_start_time = current_time
-        usernames = self._manager.list_known_agents()
-        if not usernames:
-            return
-        active_usernames = self._manager.active_session_usernames()
-        candidates = [name for name in usernames if name not in active_usernames]
-        if not candidates:
-            return
-        username = random.choice(candidates)
-        logger.info("Starting session", extra={"username": username})
-        self._manager.start_session(username)
-        active_count = self._manager.active_session_count()
-        logger.info("Active sessions: %d", active_count, extra={"username": username})
+        try:
+            current_time = time.time()
+            if (
+                current_time - self._last_start_time
+                < self._config.start_interval_seconds
+            ):
+                return
+            if self._manager.active_session_count() >= self._config.max_active_sessions:
+                return
+            self._last_start_time = current_time
+            usernames = self._manager.list_known_agents()
+            if not usernames:
+                return
+            active_usernames = self._manager.active_session_usernames()
+            candidates = [name for name in usernames if name not in active_usernames]
+            if not candidates:
+                return
+            username = random.choice(candidates)
+            self._manager.start_session(username)
+            logger.info("Session started", extra={"username": username})
+            active_count = self._manager.active_session_count()
+            logger.info(
+                "Active sessions: %d", active_count, extra={"username": username}
+            )
+        except PlaywrightTimeoutError as e:
+            logger.warning(
+                "Failed to start session due to timeout: %s",
+                str(e),
+                extra={"username": username},
+            )
 
     def _run_active_sessions(self) -> None:
         for username, agent in self._manager.active_sessions_items():
@@ -112,7 +126,19 @@ class AgentRunner:
 
     @staticmethod
     def _random_username() -> str:
-        return f"agent_{uuid4().hex[:10]}"
+        p = Path("data/usernames.csv")
+        with p.open(encoding="utf-8") as f:
+            names = f.read().splitlines()
+        names = [n.strip() for n in names if n.strip()]
+        base = random.choice(names)
+        length = random.randint(0, 3)
+        if length == 0:
+            suffix = ""
+        else:
+            max_val = 10**length - 1
+            num = random.randint(0, max_val)
+            suffix = str(num).zfill(length)
+        return f"{base}{suffix}"
 
     @staticmethod
     def _random_password() -> str:
@@ -140,7 +166,8 @@ class AgentRunner:
 
 def main() -> None:
     classpath_map = {
-        "NeuralNetworkAgent": "src.agents.neural_network_agent.NeuralNetworkAgent",
+        # "NeuralNetworkAgent": "src.agents.neural_network_agent.NeuralNetworkAgent",
+        "StockfishAgent": "src.agents.stockfish_agent.StockfishAgent",
     }
     available_classnames = list(classpath_map.keys())
     base_url = "https://playbullet.gg"
