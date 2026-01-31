@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import chess
 import numpy as np
 import tensorflow as tf
 
+from src.agents.heuristic_evaluator import HeuristicEvaluator
 from src.agents.trainable_agent import (
     PIECE_TYPE_TO_INDEX,
     PredictionResult,
@@ -93,6 +95,7 @@ class NeuralNetworkAgent(TrainableAgent):
         super().__init__(*args, **kwargs)
         self.model_file_path = f"models/{self.username}.keras"
         self.model = None
+        self.heuristic_evaluator = HeuristicEvaluator()
 
     def load_state(self, state: dict) -> None:
         super().load_state(state)
@@ -221,54 +224,59 @@ class NeuralNetworkAgent(TrainableAgent):
         moves_pred = predictions_raw[0][0]
         valid_pred = predictions_raw[1][0]
 
-        # Flatten move indices 0..4031 into (from_idx, to_idx) using
-        # a 64 x 63 mapping over all (from, to) pairs with from != to.
-        our_square_indices = {self._square_to_index(square) for square in our_squares}
+        # Create chess board for heuristic evaluation
+        board = chess.Board(fen)
+        is_white = board.turn
+
+        # Iterate over actual legal moves from the board
         candidates: list[tuple[float, PredictionResult]] = []
 
-        for move_id, (eval_val, dec_val) in enumerate(moves_pred):
-            from_idx, to_idx = self._id_to_move(move_id)
-
-            # Filter strictly by pieces we own
-            if from_idx not in our_square_indices:
-                continue
+        for move in board.legal_moves:
+            from_sq = chess.square_name(move.from_square)
+            to_sq = chess.square_name(move.to_square)
 
             # Skip moves we've already attempted in this exact position
-            from_sq = self._index_to_square(from_idx)
-            to_sq = self._index_to_square(to_idx)
             if (from_sq, to_sq) in self._made_decisions:
                 continue
 
+            # Convert move to move_id to look up neural network predictions
+            from_idx = self._square_to_index(from_sq)
+            to_idx = self._square_to_index(to_sq)
+            move_id = self._move_to_id(from_idx, to_idx)
+
+            # Get neural network predictions for this move
+            nn_eval_val = float(moves_pred[move_id][0])
+            nn_dec_val = float(moves_pred[move_id][1])
             validity_score = float(valid_pred[move_id][0])
+
+            # Get heuristic evaluation for this move
+            board_after = board.copy()
+            board_after.push(move)
+            heuristic_eval, heuristic_dec = self.heuristic_evaluator.evaluate_position(
+                board_after, is_white
+            )
+
+            # Average the neural network and heuristic evaluations
+            avg_eval = (nn_eval_val + heuristic_eval) / 2.0
+            avg_dec = (nn_dec_val + heuristic_dec) / 2.0
+
             candidates.append(
                 (
                     validity_score,
                     PredictionResult(
-                        from_sq=self._index_to_square(from_idx),
-                        to_sq=self._index_to_square(to_idx),
-                        evaluation=float(eval_val),
-                        decisive=float(dec_val),
+                        from_sq=from_sq,
+                        to_sq=to_sq,
+                        evaluation=avg_eval,
+                        decisive=avg_dec,
                     ),
                 )
             )
 
-        # Filter by validity threshold
-        valid_candidates = [c for c in candidates if c[0] >= 0.5]
-
-        if not valid_candidates:
-            logger.warning(
-                "No valid moves found above threshold; using all candidates",
-                extra={"username": self.username},
-            )
-
-        # Fallback to all candidates if no valid moves found
-        final_pool = valid_candidates if valid_candidates else candidates
-
         # Sort by evaluation descending (best moves first)
-        final_pool.sort(key=lambda x: x[1].evaluation, reverse=True)
+        candidates.sort(key=lambda x: x[1].evaluation, reverse=True)
 
         # Return top N predictions
-        return [c[1] for c in final_pool[: self.prediction_count]]
+        return [c[1] for c in candidates[: self.prediction_count]]
 
     def _encode_fen(self, fen: str) -> np.ndarray:
         """Encode FEN string as numerical features for the neural network.
