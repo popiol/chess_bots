@@ -31,14 +31,14 @@ BEGIN
   END IF;
 END
 \$\$;
-
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '${db_name}') THEN
-    CREATE DATABASE ${db_name} OWNER ${db_user};
-  END IF;
-END
-\$\$;
-
-GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};
 SQL
+
+# Create the database outside of any transaction/function (CREATE DATABASE
+# is not allowed inside a transaction block). Use createdb if the database
+# does not already exist.
+if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${db_name}'" | grep -q 1; then
+  sudo -u postgres createdb -O "${db_user}" "${db_name}"
+fi
+
+# Ensure privileges
+sudo -u postgres psql -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON DATABASE ${db_name} TO ${db_user};"
