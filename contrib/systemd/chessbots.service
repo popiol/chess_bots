@@ -1,0 +1,16 @@
+[Unit]
+Description=Chess Bots Runner
+After=network.target
+
+[Service]
+Type=simple
+User=popiol
+WorkingDirectory=/home/popiol/chess_bots
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m src.agents.runner
+
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

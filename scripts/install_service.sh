@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Usage: sudo ./scripts/install_service.sh /path/to/contrib/systemd/chess_bots_runner.service
 
-UNIT_SOURCE=${1:-contrib/systemd/chess_bots_runner.service}
+UNIT_SOURCE=${1:-contrib/systemd/chessbots.service}
 UNIT_NAME=$(basename "$UNIT_SOURCE")
 
 if [[ $EUID -ne 0 ]]; then
