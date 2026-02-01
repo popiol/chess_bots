@@ -136,11 +136,13 @@ class PlayableAgent(CustomizableAgent):
             if (
                 self._last_decisive is not None
                 and self._last_decisive < self._draw_threshold
+                and self._moves_made >= 20
             ):
                 logger.info(
-                    "Position decisive %.2f below threshold %.2f, offering draw on opponent's turn",
+                    "Position decisive %.2f below threshold %.2f, offering draw on opponent's turn (moves made: %d)",
                     self._last_decisive,
                     self._draw_threshold,
+                    self._moves_made,
                     extra={"username": self.username},
                 )
                 self._web_client.offer_draw()

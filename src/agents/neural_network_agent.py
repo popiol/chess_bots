@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from pathlib import Path
 
 import chess
@@ -103,6 +104,7 @@ class NeuralNetworkAgent(TrainableAgent):
 
     def load_model(self) -> None:
         """Load an existing model from disk or create a new one."""
+
         model_path = Path(self.model_file_path)
 
         # Load main model
@@ -112,7 +114,12 @@ class NeuralNetworkAgent(TrainableAgent):
             )
             self.model = tf.keras.models.load_model(model_path)
         else:
-            base_path = Path("models/base.keras")
+            base_choices = [
+                "models/base_s.keras",
+                "models/base_m.keras",
+                "models/base_l.keras",
+            ]
+            base_path = Path(random.choice(base_choices))
             logger.info(
                 "Loading base model from %s",
                 base_path,

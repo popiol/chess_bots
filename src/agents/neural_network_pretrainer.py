@@ -45,8 +45,8 @@ class NeuralNetworkPretrainer:
         test_split: float = 0.2,
         shuffle: bool = True,
         random_seed: int = 42,
-        max_samples: int = 50_000,
-        read_limit: int = 500_000,
+        max_samples: int = 1_000_000,
+        read_limit: int = 1_000_000,
     ) -> None:
         self._agent = agent
         self._data_path = Path(data_path)
