@@ -1,6 +1,9 @@
 data/*
 !data/usernames.csv
-models/
+models/*
+!models/base_s.keras
+!models/base_m.keras
+!models/base_l.keras
 activate/
 deactivate/
 
