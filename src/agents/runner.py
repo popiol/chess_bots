@@ -61,11 +61,8 @@ class AgentRunner:
                 self._maybe_create_agent()
                 self._maybe_start_session()
                 self._run_active_sessions()
-            except Exception:
-                # Log unexpected errors in the main loop but keep the runner alive.
-                logger.exception("Unhandled exception in runner main loop; continuing")
-                # Small sleep to avoid a tight crash loop
-                time.sleep(1.0)
+            except Exception as ex:
+                logger.exception("Exception in main loop: %s", str(ex))
 
     def run_single_session(
         self, *, classpath: str | None = None, username: str | None = None
