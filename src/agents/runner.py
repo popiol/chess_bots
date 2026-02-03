@@ -54,6 +54,9 @@ class AgentRunner:
         # Track consecutive exceptions per session; end session after threshold
         self._consecutive_failures: dict[str, int] = {}
         self._max_consecutive_failures = 3
+        # Track consecutive start failures (Playwright timeouts)
+        self._start_failures = 0
+        self._max_start_failures = 3
 
     def main_loop(self) -> None:
         while True:
@@ -117,11 +120,23 @@ class AgentRunner:
                 "Active sessions: %d", active_count, extra={"username": username}
             )
         except PlaywrightTimeoutError as e:
+            self._start_failures += 1
             logger.warning(
-                "Failed to start session due to timeout: %s",
+                "Failed to start session due to timeout (count=%d): %s",
+                self._start_failures,
                 str(e),
                 extra={"username": username},
             )
+            if self._start_failures >= self._max_start_failures:
+                logger.error(
+                    "Repeated start timeouts (%d), escalating",
+                    self._start_failures,
+                    extra={"username": username},
+                )
+                raise
+            return
+        else:
+            self._start_failures = 0
 
     def _run_active_sessions(self) -> None:
         for username, agent in self._manager.active_sessions_items():
