@@ -51,12 +51,21 @@ class AgentRunner:
         self._config = config or RunnerConfig()
         self._last_create_time = time.time()
         self._last_start_time = 0.0
+        # Track consecutive exceptions per session; end session after threshold
+        self._consecutive_failures: dict[str, int] = {}
+        self._max_consecutive_failures = 3
 
     def main_loop(self) -> None:
         while True:
-            self._maybe_create_agent()
-            self._maybe_start_session()
-            self._run_active_sessions()
+            try:
+                self._maybe_create_agent()
+                self._maybe_start_session()
+                self._run_active_sessions()
+            except Exception:
+                # Log unexpected errors in the main loop but keep the runner alive.
+                logger.exception("Unhandled exception in runner main loop; continuing")
+                # Small sleep to avoid a tight crash loop
+                time.sleep(1.0)
 
     def run_single_session(
         self, *, classpath: str | None = None, username: str | None = None
@@ -119,7 +128,27 @@ class AgentRunner:
 
     def _run_active_sessions(self) -> None:
         for username, agent in self._manager.active_sessions_items():
-            agent.run()
+            try:
+                agent.run()
+            except Exception:
+                cnt = self._consecutive_failures.get(username, 0) + 1
+                self._consecutive_failures[username] = cnt
+                logger.exception(
+                    "Agent.run() raised an exception (count=%d)",
+                    cnt,
+                    extra={"username": username},
+                )
+                if cnt >= self._max_consecutive_failures:
+                    logger.error(
+                        "Too many consecutive failures (%d), ending session",
+                        cnt,
+                        extra={"username": username},
+                    )
+                    agent.session_done = True
+
+            if username in self._consecutive_failures:
+                self._consecutive_failures.pop(username, None)
+
             if agent.session_done:
                 logger.info("Ending session", extra={"username": username})
                 self._manager.end_session(username)
