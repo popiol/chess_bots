@@ -60,12 +60,9 @@ class AgentRunner:
 
     def main_loop(self) -> None:
         while True:
-            try:
-                self._maybe_create_agent()
-                self._maybe_start_session()
-                self._run_active_sessions()
-            except Exception as ex:
-                logger.exception("Exception in main loop: %s", str(ex))
+            self._maybe_create_agent()
+            self._maybe_start_session()
+            self._run_active_sessions()
 
     def run_single_session(
         self, *, classpath: str | None = None, username: str | None = None
