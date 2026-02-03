@@ -7,7 +7,7 @@ Type=simple
 User=popiol
 WorkingDirectory=/home/popiol/chess_bots
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 -m src.agents.runner
+ExecStart=/usr/bin/python -m src.agents.runner
 # Ensure the engine binary is discoverable for systemd services (includes /usr/games)
 Environment=STOCKFISH_PATH=/usr/games/stockfish
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games
