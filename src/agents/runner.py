@@ -32,7 +32,7 @@ class UsernameFilter(logging.Filter):
 
 @dataclass(frozen=True)
 class RunnerConfig:
-    create_interval_seconds: float = 3600.0 * 24  # How often to try creating agents
+    create_interval_seconds: float = 60.0  # How often to try creating agents
     start_interval_seconds: float = 60.0  # How often to try starting sessions
     max_active_sessions: int = 10
 
@@ -87,6 +87,9 @@ class AgentRunner:
         if current_time - self._last_create_time < self._config.create_interval_seconds:
             return
         if self._manager.active_session_count() >= self._config.max_active_sessions:
+            return
+        known_agents = self._manager.list_known_agents()
+        if len(known_agents) >= self._config.max_active_sessions:
             return
         self._last_create_time = current_time
         self._create_random_agent()
