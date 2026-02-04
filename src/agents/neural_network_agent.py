@@ -269,6 +269,10 @@ class NeuralNetworkAgent(TrainableAgent):
                 to_sq,
                 nn_eval_val,
                 nn_dec_val,
+                validity_score,
+                heuristic_eval,
+                heuristic_dec,
+                extra={"username": self.username},
             )
 
             # Average the neural network and heuristic evaluations
