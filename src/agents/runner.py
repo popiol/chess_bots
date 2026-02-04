@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
 
+import psutil
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from src.agents.manager import AgentManager
@@ -113,6 +114,16 @@ class AgentRunner:
             if not candidates:
                 return
             username = random.choice(candidates)
+            # Ensure sufficient free memory before starting a new session
+            min_bytes = 200 * 1024 * 1024  # 200 MB
+            if psutil.virtual_memory().available < min_bytes:
+                logger.warning(
+                    "Insufficient free memory to start session, need >=%d bytes",
+                    min_bytes,
+                    extra={"username": username},
+                )
+                return
+
             self._manager.start_session(username)
             logger.info("Session started", extra={"username": username})
             active_count = self._manager.active_session_count()
