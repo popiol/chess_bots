@@ -264,7 +264,11 @@ class NeuralNetworkAgent(TrainableAgent):
             )
 
             logger.info(
-                "Move %s->%s: NN eval=%.3f, NN dec=%.3f, Validity=%.3f, Heuristic eval=%.3f, Heuristic dec=%.3f"
+                "Move %s->%s: NN eval=%.3f, NN dec=%.3f, Validity=%.3f, Heuristic eval=%.3f, Heuristic dec=%.3f",
+                from_sq,
+                to_sq,
+                nn_eval_val,
+                nn_dec_val,
             )
 
             # Average the neural network and heuristic evaluations
