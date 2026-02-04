@@ -115,7 +115,7 @@ class AgentRunner:
                 return
             username = random.choice(candidates)
             # Ensure sufficient free memory before starting a new session
-            min_bytes = 400 * 1024 * 1024  # 400 MB
+            min_bytes = 1000 * 1024 * 1024  # 1000 MB
             if psutil.virtual_memory().available < min_bytes:
                 logger.warning(
                     "Insufficient free memory to start session, need >=%d bytes",
