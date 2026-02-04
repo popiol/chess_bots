@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import random
 from typing import List
 
+import numpy as np
 from stockfish import Stockfish
 
 from src.agents.trainable_agent import PredictionResult, TrainableAgent
@@ -50,8 +52,8 @@ class StockfishAgent(TrainableAgent):
             else:
                 eval_raw = None
 
-            eval_val = self._convert_stockfish_eval(eval_raw)
-            decisive = abs(eval_val)
+            eval_val = self._convert_stockfish_eval(eval_raw) + random.gauss(0, 0.05)
+            decisive = abs(eval_val) + random.gauss(0, 0.05)
 
             results.append(
                 PredictionResult(
@@ -64,24 +66,17 @@ class StockfishAgent(TrainableAgent):
 
         return results
 
-    def _convert_stockfish_eval(self, raw) -> float:
+    def _convert_stockfish_eval(self, raw: int | None) -> float:
         """Convert Stockfish evaluation to -1..1 scale.
 
         - If raw is None, return 0.0
-        - If raw is centipawns (int), map via cp/1000 clamped to [-1,1]
+        - If raw is centipawns (int), map via logarithmic scale clamped to [-1,1]
         - Large mate values are mapped to +/-1.0
         """
         if raw is None:
             return 0.0
-        try:
-            cp = int(raw)
-            # Scale: 1000 cp -> 1.0 (rough heuristic)
-            val = max(min(cp / 1000.0, 1.0), -1.0)
-            return float(val)
-        except Exception:
-            # If conversion fails, treat as non-numeric (e.g., mate), map to sign
-            try:
-                v = float(raw)
-                return max(min(v / 1000.0, 1.0), -1.0)
-            except Exception:
-                return 1.0
+
+        # Logarithmic scaling used to reduce impact of large values
+        max_cp = 1000.0
+        val = np.sign(raw) * (np.log1p(abs(raw)) / np.log1p(max_cp))
+        return float(np.clip(val, -1.0, 1.0))
