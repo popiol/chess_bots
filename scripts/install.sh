@@ -4,9 +4,6 @@ set -euo pipefail
 apt-get update
 apt-get install -y postgresql postgresql-contrib
 
-python -m venv .venv
-source .venv/bin/activate
-
 set -a
 source .env
 set +a
