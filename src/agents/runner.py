@@ -118,7 +118,8 @@ class AgentRunner:
             min_bytes = 1000 * 1024 * 1024  # 1000 MB
             if psutil.virtual_memory().available < min_bytes:
                 logger.warning(
-                    "Insufficient free memory to start session, need >=%d bytes",
+                    "Insufficient free memory to start session: available=%d, need >=%d bytes",
+                    psutil.virtual_memory().available,
                     min_bytes,
                     extra={"username": username},
                 )
