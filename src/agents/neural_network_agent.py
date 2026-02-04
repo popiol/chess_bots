@@ -263,6 +263,10 @@ class NeuralNetworkAgent(TrainableAgent):
                 board_after, is_white
             )
 
+            logger.info(
+                "Move %s->%s: NN eval=%.3f, NN dec=%.3f, Validity=%.3f, Heuristic eval=%.3f, Heuristic dec=%.3f"
+            )
+
             # Average the neural network and heuristic evaluations
             avg_eval = 0.05 * nn_eval_val + 0.95 * heuristic_eval
             avg_dec = 0.05 * nn_dec_val + 0.95 * heuristic_dec
