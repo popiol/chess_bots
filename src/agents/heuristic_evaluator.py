@@ -22,10 +22,9 @@ class HeuristicEvaluator:
 
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
-        self.material_weight = 0
-        self.attacked_weaker_weight = 0.50
+        self.profitable_weight = 0.29
+        self.material_weight = 0.29
         self.mobility_weight = 0.12
-        self.undefended_weight = 0.08
         self.king_weight = 0.06
         self.castling_weight = 0.03
         self.center_weight = 0.05
@@ -55,28 +54,26 @@ class HeuristicEvaluator:
         king_eval = self._king_safety_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
-        undefended_eval = self._undefended_attack_eval(board, is_white)
+        profitable_attack_eval = self._profitable_attack_eval(board, is_white)
         center_eval = self._center_control_eval(board, is_white)
         undeveloped_eval = self._undeveloped_pieces_eval(board, is_white)
         doubled_eval = self._doubled_pawns_eval(board, is_white)
         isolated_eval = self._isolated_pawns_eval(board, is_white)
         passed_eval = self._passed_pawns_eval(board, is_white)
-        attacked_weaker_eval = self._attacked_by_weaker_eval(board, is_white)
 
         # Weighted sum for overall evaluation
         eval_val = (
-            0  # self.material_weight * material_eval
+            self.material_weight * material_eval
             + self.mobility_weight * mobility_eval
             + self.king_weight * king_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
-            + self.undefended_weight * undefended_eval
+            + self.profitable_weight * profitable_attack_eval
             + self.center_weight * center_eval
             + self.undeveloped_weight * undeveloped_eval
             + self.doubled_weight * doubled_eval
             + self.isolated_weight * isolated_eval
             + self.passed_weight * passed_eval
-            + self.attacked_weaker_weight * attacked_weaker_eval
         )
         eval_val = float(np.clip(eval_val, -1.0, 1.0))
 
@@ -87,13 +84,12 @@ class HeuristicEvaluator:
             + self.king_weight * abs(king_eval)
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
-            + self.undefended_weight * abs(undefended_eval)
+            + self.profitable_weight * abs(profitable_attack_eval)
             + self.center_weight * abs(center_eval)
             + self.undeveloped_weight * abs(undeveloped_eval)
             + self.doubled_weight * abs(doubled_eval)
             + self.isolated_weight * abs(isolated_eval)
             + self.passed_weight * abs(passed_eval)
-            + self.attacked_weaker_weight * abs(attacked_weaker_eval)
         )
         decisive = float(np.clip(decisive_ratio, 0.0, 1.0))
 
@@ -246,36 +242,72 @@ class HeuristicEvaluator:
             return -1.0
         return 0.0
 
-    def _undefended_attack_eval(
+    def _profitable_attack_eval(
         self, board_after: chess.Board, is_white: bool
     ) -> float:
-        """Count pieces that are attacked by opponent and not defended by their own side.
+        """Evaluate material exchange on attacked squares.
 
-        Returns an agent-perspective normalized value in [-1,1]: positive if opponent
-        has more undefended pieces than the agent, negative otherwise.
+        For every square occupied by a piece, if it is attacked by the opponent,
+        estimate the potential material change after a series of captures.
+        We consider min(attackers, defenders) exchanges, prioritizing weaker pieces.
+
+        Returns agent-perspective normalized value in [-1,1].
         """
-        white_undef = 0
-        black_undef = 0
+        white_gain = 0.0
+        black_gain = 0.0
+
         for sq, piece in board_after.piece_map().items():
-            if piece.color == chess.WHITE:
-                attacked = board_after.is_attacked_by(chess.BLACK, sq)
-                defended = board_after.is_attacked_by(chess.WHITE, sq)
-                if attacked and not defended:
-                    white_undef += 1
-            else:
-                attacked = board_after.is_attacked_by(chess.WHITE, sq)
-                defended = board_after.is_attacked_by(chess.BLACK, sq)
-                if attacked and not defended:
-                    black_undef += 1
+            # Who is being attacked?
+            defender_color = piece.color
+            attacker_color = not defender_color
 
-        our_undef = white_undef if is_white else black_undef
-        opp_undef = black_undef if is_white else white_undef
+            attackers = list(board_after.attackers(attacker_color, sq))
+            if not attackers:
+                continue
 
-        diff = opp_undef - our_undef
+            # Get values of attacking pieces, sorted weakest first
+            attacker_values = sorted(
+                [
+                    PIECE_VALUES.get(board_after.piece_at(a).piece_type, 0)  # type: ignore
+                    for a in attackers
+                ]
+            )
+
+            # Get defenders (friendly pieces protecting the square)
+            defenders = list(board_after.attackers(defender_color, sq))
+            defender_values = sorted(
+                [
+                    PIECE_VALUES.get(board_after.piece_at(d).piece_type, 0)  # type: ignore
+                    for d in defenders
+                ]
+            )
+
+            k = min(len(attackers), len(defenders))
+
+            # Cost for attacker: Sum of k weakest attackers
+            attacker_loss = sum(attacker_values[:k])
+
+            # Cost for defender: Target + Sum of k-1 weakest defenders
+            target_val = PIECE_VALUES.get(piece.piece_type, 0)
+            defender_loss = target_val + sum(defender_values[: (k - 1)])
+
+            net_gain = defender_loss - attacker_loss
+            if net_gain > 0:
+                if attacker_color == chess.WHITE:
+                    white_gain += net_gain
+                else:
+                    black_gain += net_gain
+
+        our_gain = white_gain if is_white else black_gain
+        opp_gain = black_gain if is_white else white_gain
+
+        diff = our_gain - opp_gain
         if diff == 0:
             return 0.0
-        max_undef = 8.0
-        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_undef))
+
+        # Scale: A queen trade is 9, so gains can be large.
+        max_gain = 15.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_gain))
         return float(np.clip(scaled, -1.0, 1.0))
 
     def _center_control_eval(self, board_after: chess.Board, is_white: bool) -> float:
@@ -451,43 +483,4 @@ class HeuristicEvaluator:
             return 0.0
         max_passed = 8.0
         scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_passed))
-        return float(np.clip(scaled, -1.0, 1.0))
-
-    def _attacked_by_weaker_eval(
-        self, board_after: chess.Board, is_white: bool
-    ) -> float:
-        """Count pieces attacked by strictly weaker attackers and sum strength differences.
-
-        For every attack where an attacker has strictly lower PIECE_VALUES than the
-        attacked piece, add (attacked_value - attacker_value) to that side's score.
-        Returns agent-perspective normalized value in [-1,1]: positive if opponent
-        has more/weaker-attack advantage than the agent.
-        """
-        white_score = 0.0
-        black_score = 0.0
-        for sq, piece in board_after.piece_map().items():
-            attacked_value = PIECE_VALUES.get(piece.piece_type, 0)
-            # attackers of this square are pieces of the opposite color
-            attackers = board_after.attackers(not piece.color, sq)
-            for a_sq in attackers:
-                attacker = board_after.piece_at(a_sq)
-                if attacker is None:
-                    continue
-                attacker_value = PIECE_VALUES.get(attacker.piece_type, 0)
-                if attacker_value < attacked_value:
-                    diff = attacked_value - attacker_value
-                    if piece.color == chess.WHITE:
-                        # white piece is attacked by a weaker (black) piece
-                        white_score += diff
-                    else:
-                        black_score += diff
-
-        our = white_score if is_white else black_score
-        opp = black_score if is_white else white_score
-
-        diff = opp - our
-        if diff == 0:
-            return 0.0
-        max_sum = 8.0
-        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_sum))
         return float(np.clip(scaled, -1.0, 1.0))
