@@ -5,3 +5,4 @@ numpy
 tensorflow-cpu
 chess
 stockfish
+psutil
