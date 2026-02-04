@@ -1,6 +1,6 @@
 playwright
 SQLAlchemy
-psycopg2
+psycopg2-binary
 numpy
 tensorflow-cpu
 chess
