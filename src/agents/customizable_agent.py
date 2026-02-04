@@ -35,8 +35,8 @@ class CustomizableAgent(Agent, ABC):
         self._last_post_login_log_time = 0.0
         self._time_control_weights: dict[int, int] = {}
         self._consecutive_failures = 0
-        # Maximum seconds to wait for post-login readiness before proceeding
         self._post_login_timeout: float = 10.0
+        self._matchmaking_timeout: float = 300.0
 
     def run(self) -> None:
         try:
@@ -235,6 +235,16 @@ class CustomizableAgent(Agent, ABC):
             return
 
         if not self._web_client.is_play_ready():
+            # Timeout exceeded
+            if current_time - self._last_stage_change_time >= self._matchmaking_timeout:
+                logger.warning(
+                    "Matchmaking timed out after %.1f seconds, ending session",
+                    self._matchmaking_timeout,
+                    extra={"username": self.username},
+                )
+                self.session_done = True
+                return
+
             # Log every 60 seconds
             if current_time - self._last_matchmaking_log_time >= 60.0:
                 logger.info("Matchmaking pending", extra={"username": self.username})
