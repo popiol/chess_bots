@@ -52,8 +52,8 @@ class StockfishAgent(TrainableAgent):
             else:
                 eval_raw = None
 
-            eval_val = self._convert_stockfish_eval(eval_raw) + random.gauss(0, 0.05)
-            decisive = abs(eval_val) + random.gauss(0, 0.05)
+            eval_val = self._convert_stockfish_eval(eval_raw) + random.gauss(0, 0.1)
+            decisive = abs(eval_val) + random.gauss(0, 0.1)
 
             results.append(
                 PredictionResult(
