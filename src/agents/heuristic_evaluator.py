@@ -121,7 +121,11 @@ class HeuristicEvaluator:
             opp_total = white_total
 
         max_material = 39.0
-        return float(np.clip((our_total - opp_total) / max_material, -1.0, 1.0))
+        diff = our_total - opp_total
+        if diff == 0:
+            return 0.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_material))
+        return float(np.clip(scaled, -1.0, 1.0))
 
     def _mobility_eval(self, board_after: chess.Board, is_white: bool) -> float:
         """Compute mobility evaluation (normalized difference in legal moves)."""
@@ -267,10 +271,12 @@ class HeuristicEvaluator:
         our_undef = white_undef if is_white else black_undef
         opp_undef = black_undef if is_white else white_undef
 
-        # Both colors counted above; return agent-perspective difference
-        norm = 8.0
-        diff = (opp_undef - our_undef) / norm
-        return float(np.clip(diff, -1.0, 1.0))
+        diff = opp_undef - our_undef
+        if diff == 0:
+            return 0.0
+        max_undef = 8.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_undef))
+        return float(np.clip(scaled, -1.0, 1.0))
 
     def _center_control_eval(self, board_after: chess.Board, is_white: bool) -> float:
         """Evaluate control of central squares d4,e4,d5,e5.
@@ -287,10 +293,12 @@ class HeuristicEvaluator:
         our_ctrl = white_control if is_white else black_control
         opp_ctrl = black_control if is_white else white_control
 
-        # Normalize by an empirical bound: up to 12 attackers total across centers
-        norm = 12.0
-        diff = (our_ctrl - opp_ctrl) / norm
-        return float(np.clip(diff, -1.0, 1.0))
+        diff = our_ctrl - opp_ctrl
+        if diff == 0:
+            return 0.0
+        max_ctrl = 12.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_ctrl))
+        return float(np.clip(scaled, -1.0, 1.0))
 
     def _undeveloped_pieces_eval(
         self, board_after: chess.Board, is_white: bool
@@ -346,10 +354,12 @@ class HeuristicEvaluator:
         our_doubled = white_doubled if is_white else black_doubled
         opp_doubled = black_doubled if is_white else white_doubled
 
-        # Normalize by an empirical bound (8 pawns -> up to 7 doubled in extreme cases)
-        norm = 7.0
-        diff = (opp_doubled - our_doubled) / norm
-        return float(np.clip(diff, -1.0, 1.0))
+        diff = opp_doubled - our_doubled
+        if diff == 0:
+            return 0.0
+        max_doubled = 7.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_doubled))
+        return float(np.clip(scaled, -1.0, 1.0))
 
     def _isolated_pawns_eval(self, board_after: chess.Board, is_white: bool) -> float:
         """Penalize isolated pawns: count pawns with no friendly pawns on adjacent files.
@@ -385,10 +395,12 @@ class HeuristicEvaluator:
         our_iso = white_isolated if is_white else black_isolated
         opp_iso = black_isolated if is_white else white_isolated
 
-        # Normalize by an empirical bound (8 pawns)
-        norm = 8.0
-        diff = (opp_iso - our_iso) / norm
-        return float(np.clip(diff, -1.0, 1.0))
+        diff = opp_iso - our_iso
+        if diff == 0:
+            return 0.0
+        max_iso = 8.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_iso))
+        return float(np.clip(scaled, -1.0, 1.0))
 
     def _passed_pawns_eval(self, board_after: chess.Board, is_white: bool) -> float:
         """Reward passed pawns: count pawns that have no opposing pawn on same or adjacent files ahead of them.
@@ -434,10 +446,12 @@ class HeuristicEvaluator:
         our_passed = white_passed if is_white else black_passed
         opp_passed = black_passed if is_white else white_passed
 
-        # Normalize by an empirical bound (8 pawns)
-        norm = 8.0
-        diff = (our_passed - opp_passed) / norm
-        return float(np.clip(diff, -1.0, 1.0))
+        diff = our_passed - opp_passed
+        if diff == 0:
+            return 0.0
+        max_passed = 8.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_passed))
+        return float(np.clip(scaled, -1.0, 1.0))
 
     def _attacked_by_weaker_eval(
         self, board_after: chess.Board, is_white: bool
@@ -471,8 +485,9 @@ class HeuristicEvaluator:
         our = white_score if is_white else black_score
         opp = black_score if is_white else white_score
 
-        # Normalize by empirical bound. In extreme cases many attacks could sum high;
-        # choose 32 as reasonable normalization for summed value differences.
-        norm = 32.0
-        diff = (opp - our) / norm
-        return float(np.clip(diff, -1.0, 1.0))
+        diff = opp - our
+        if diff == 0:
+            return 0.0
+        max_sum = 8.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_sum))
+        return float(np.clip(scaled, -1.0, 1.0))
