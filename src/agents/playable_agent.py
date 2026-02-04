@@ -25,7 +25,7 @@ class PlayableAgent(CustomizableAgent):
         self._draw_threshold: float = 0.01
         self._last_decisive: float | None = None
         self._time_remaining: int | None = None
-        self._expected_total_moves: int = 20  # Expected moves per player
+        self._expected_total_moves: int = 40  # Expected moves per player
         self._allocated_time: float | None = None
         self._last_calculation_time: float | None = (
             None  # System time at last calculation

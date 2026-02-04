@@ -2,7 +2,7 @@
 set -euo pipefail
 
 apt-get update
-apt-get install -y postgresql postgresql-contrib
+apt-get install -y postgresql postgresql-contrib stockfish
 
 set -a
 source .env
