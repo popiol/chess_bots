@@ -263,7 +263,7 @@ class NeuralNetworkAgent(TrainableAgent):
                 board_after, is_white
             )
 
-            logger.info(
+            logger.debug(
                 "Move %s->%s: NN eval=%.3f, NN dec=%.3f, Validity=%.3f, Heuristic eval=%.3f, Heuristic dec=%.3f",
                 from_sq,
                 to_sq,
