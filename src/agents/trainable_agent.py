@@ -124,19 +124,38 @@ class TrainableAgent(PlayableAgent):
                         from_sq = chess.square_name(mv.from_square)
                         to_sq = chess.square_name(mv.to_square)
                         # Record opponent move as a Decision with fen = position before their move
-                        self._opponent_move_history.append(
-                            Decision(
-                                fen=self._last_fen_after_our_move,
-                                from_sq=from_sq,
-                                to_sq=to_sq,
+                        new_decision = Decision(
+                            fen=self._last_fen_after_our_move,
+                            from_sq=from_sq,
+                            to_sq=to_sq,
+                        )
+
+                        # Avoid appending the same move twice in a row
+                        last = (
+                            self._opponent_move_history[-1]
+                            if self._opponent_move_history
+                            else None
+                        )
+                        if (
+                            last is None
+                            or last.fen != new_decision.fen
+                            or last.from_sq != new_decision.from_sq
+                            or last.to_sq != new_decision.to_sq
+                        ):
+                            self._opponent_move_history.append(new_decision)
+                            logger.info(
+                                "Detected opponent move %s->%s",
+                                from_sq,
+                                to_sq,
+                                extra={"username": self.username},
                             )
-                        )
-                        logger.info(
-                            "Detected opponent move %s->%s",
-                            from_sq,
-                            to_sq,
-                            extra={"username": self.username},
-                        )
+                        else:
+                            logger.debug(
+                                "Duplicate opponent move ignored %s->%s",
+                                from_sq,
+                                to_sq,
+                                extra={"username": self.username},
+                            )
                         found = True
                         break
                 if not found:
