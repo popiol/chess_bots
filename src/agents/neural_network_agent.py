@@ -383,12 +383,25 @@ class NeuralNetworkAgent(TrainableAgent):
             target_valid = preds[1]
 
             # Targets for this game
-            eval_target = float(score)
             decisive_target = float(abs(score))
 
+            # Map full color name to short code
+            my_color_code = "w" if self._player_color == "white" else "b"
+
             for i, move_id in enumerate(move_indices):
+                # Determine whose turn it was
+                decision = self._decision_history[i]
+                active_color = decision.fen.split()[1]
+
+                # If it was our turn, we want to predict the score we got.
+                # If it was opponent's turn, from their perspective the result is negated.
+                if active_color == my_color_code:
+                    current_eval_target = score
+                else:
+                    current_eval_target = -score
+
                 # Update Strategy Head for the chosen move
-                target_moves[i, move_id, 0] = eval_target
+                target_moves[i, move_id, 0] = current_eval_target
                 target_moves[i, move_id, 1] = decisive_target
 
                 # Update Validity Head (reinforce that this move was valid)
