@@ -179,7 +179,11 @@ class TrainableAgent(PlayableAgent):
             )
 
         # If we have less than 3 seconds, return best move immediately
-        if self._allocated_time is None or self._allocated_time < 3:
+        if (
+            self._allocated_time is None
+            or self._allocated_time < 3
+            or not self._expansion_queue
+        ):
             best_move = max(
                 self._analysis.predictions,
                 key=lambda m: m.evaluation + self._aggression * m.decisive,
