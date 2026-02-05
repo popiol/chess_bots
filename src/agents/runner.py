@@ -58,6 +58,8 @@ class AgentRunner:
         # Track consecutive start failures (Playwright timeouts)
         self._start_failures = 0
         self._max_start_failures = 3
+        # Track consecutive memory check failures
+        self._memory_failures = 0
 
     def main_loop(self) -> None:
         while True:
@@ -119,14 +121,21 @@ class AgentRunner:
             free_bytes = psutil.virtual_memory().available
             logger.info("Available memory: %d bytes", free_bytes)
             if free_bytes < min_bytes:
+                self._memory_failures += 1
                 logger.warning(
-                    "Insufficient free memory to start session: available=%d, need >=%d bytes",
+                    "Insufficient free memory to start session (count=%d): available=%d, need >=%d bytes",
+                    self._memory_failures,
                     free_bytes,
                     min_bytes,
                     extra={"username": username},
                 )
+                if self._memory_failures >= 10:
+                    raise RuntimeError(
+                        f"Insufficient memory for {self._memory_failures} consecutive checks."
+                    )
                 return
 
+            self._memory_failures = 0
             self._manager.start_session(username)
             logger.info("Session started", extra={"username": username})
             active_count = self._manager.active_session_count()
