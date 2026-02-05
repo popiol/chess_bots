@@ -360,67 +360,89 @@ class NeuralNetworkAgent(TrainableAgent):
         assert self.model is not None, "Model is not initialized"
 
         try:
-            # Prepare batch from history
-            inputs = []
-            move_indices = []
-
+            # Prepare our-move batch
+            inputs_our = []
+            move_indices_our = []
             for decision in self._decision_history:
-                inputs.append(self._encode_fen(decision.fen))
-                move = decision.move  # PredictionResult
+                inputs_our.append(self._encode_fen(decision.fen))
+                from_idx = self._square_to_index(decision.from_sq)
+                to_idx = self._square_to_index(decision.to_sq)
+                move_indices_our.append(self._move_to_id(from_idx, to_idx))
 
-                # Calculate move_id by converting square names to indices
-                from_idx = self._square_to_index(move.from_sq)
-                to_idx = self._square_to_index(move.to_sq)
+            # Prepare opponent-move batch (if available)
+            inputs_opp = []
+            move_indices_opp = []
+            for decision in getattr(self, "_opponent_move_history", []):
+                inputs_opp.append(self._encode_fen(decision.fen))
+                from_idx = self._square_to_index(decision.from_sq)
+                to_idx = self._square_to_index(decision.to_sq)
+                move_indices_opp.append(self._move_to_id(from_idx, to_idx))
 
-                move_id = self._move_to_id(from_idx, to_idx)
-                move_indices.append(move_id)
+            # If both batches are empty, skip training to avoid predict on empty arrays
+            if not inputs_our and not inputs_opp:
+                logger.info(
+                    "No training samples (our or opponent) available; skipping training.",
+                    extra={"username": self.username},
+                )
+                return
 
-            X = np.array(inputs)
+            # Build our batch targets if present
+            X_our = None
+            if inputs_our:
+                X_our = np.array(inputs_our)
+                preds_our = self.model.predict(X_our, verbose=0)
+                target_moves_our = np.zeros_like(preds_our[0])
+                target_valid_our = preds_our[1]
 
-            # Predict current outputs
-            preds = self.model.predict(X, verbose=0)
-            target_moves = np.zeros_like(preds[0])
-            target_valid = preds[1]
+                eval_target = float(score)
+                decisive_target = float(abs(score))
+                for i, move_id in enumerate(move_indices_our):
+                    target_moves_our[i, move_id, 0] = eval_target
+                    target_moves_our[i, move_id, 1] = decisive_target
+                    target_valid_our[i, move_id, 0] = 1.0
 
-            # Targets for this game
-            decisive_target = float(abs(score))
+            # Build opponent batch targets if present
+            X_opp = None
+            if inputs_opp:
+                X_opp = np.array(inputs_opp)
+                preds_opp = self.model.predict(X_opp, verbose=0)
+                target_moves_opp = np.zeros_like(preds_opp[0])
+                target_valid_opp = preds_opp[1]
 
-            # Map full color name to short code
-            my_color_code = "w" if self._player_color == "white" else "b"
+                eval_target_opp = -float(score)
+                decisive_target_opp = float(abs(score))
+                for i, move_id in enumerate(move_indices_opp):
+                    target_moves_opp[i, move_id, 0] = eval_target_opp
+                    target_moves_opp[i, move_id, 1] = decisive_target_opp
+                    target_valid_opp[i, move_id, 0] = 1.0
 
-            for i, move_id in enumerate(move_indices):
-                # Determine whose turn it was
-                decision = self._decision_history[i]
-                active_color = decision.fen.split()[1]
-
-                # If it was our turn, we want to predict the score we got.
-                # If it was opponent's turn, from their perspective the result is negated.
-                if active_color == my_color_code:
-                    current_eval_target = score
-                else:
-                    current_eval_target = -score
-
-                # Update Strategy Head for the chosen move
-                target_moves[i, move_id, 0] = current_eval_target
-                target_moves[i, move_id, 1] = decisive_target
-
-                # Update Validity Head (reinforce that this move was valid)
-                target_valid[i, move_id, 0] = 1.0
-
-            # Train on the sequence of moves from this game
+            # Train alternatingly on both batches for a few iterations
             for _ in range(10):
-                loss = self.model.train_on_batch(X, [target_moves, target_valid])
+                if X_our is not None:
+                    loss = self.model.train_on_batch(
+                        X_our, [target_moves_our, target_valid_our]
+                    )
+                if X_opp is not None:
+                    loss = self.model.train_on_batch(
+                        X_opp, [target_moves_opp, target_valid_opp]
+                    )
 
             # Save the model
             model_path = Path(self.model_file_path)
             model_path.parent.mkdir(parents=True, exist_ok=True)
             self.model.save(model_path)
 
+            sample_count = 0
+            if X_our is not None:
+                sample_count += len(X_our)
+            if X_opp is not None:
+                sample_count += len(X_opp)
+
             logger.info(
                 "Trained on game end (score=%s) and saved model to %s. Samples: %d. Loss: %s",
                 score,
                 model_path,
-                len(X),
+                sample_count,
                 loss,
                 extra={"username": self.username},
             )

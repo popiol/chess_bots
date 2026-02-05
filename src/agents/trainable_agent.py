@@ -55,7 +55,8 @@ class Decision:
     """Record of a decision made by the agent."""
 
     fen: str
-    move: PredictionResult
+    from_sq: str
+    to_sq: str
 
 
 class TrainableAgent(PlayableAgent):
@@ -79,6 +80,10 @@ class TrainableAgent(PlayableAgent):
         self._aggression: float = 0.0
         # Number of moves to return from _predict
         self.prediction_count: int = 2
+        # Remember the FEN after we made our last decided move
+        self._last_fen_after_our_move: str | None = None
+        # Opponent move history as list of Decision objects (fen, from_sq, to_sq)
+        self._opponent_move_history: list[Decision] = []
 
     def snapshot_state(self) -> dict:
         state = super().snapshot_state()
@@ -105,6 +110,40 @@ class TrainableAgent(PlayableAgent):
         logger.debug(
             "Deciding move for FEN: %s", current_fen, extra={"username": self.username}
         )
+
+        # If we previously recorded the FEN after our move, compare it to the
+        # current FEN to detect the opponent's move (if any) and store it.
+        if self._last_fen_after_our_move is not None:
+            if current_fen != self._last_fen_after_our_move:
+                prev_board = chess.Board(self._last_fen_after_our_move)
+                found = False
+                for mv in prev_board.legal_moves:
+                    nb = prev_board.copy()
+                    nb.push(mv)
+                    if nb.fen() == current_fen:
+                        from_sq = chess.square_name(mv.from_square)
+                        to_sq = chess.square_name(mv.to_square)
+                        # Record opponent move as a Decision with fen = position before their move
+                        self._opponent_move_history.append(
+                            Decision(
+                                fen=self._last_fen_after_our_move,
+                                from_sq=from_sq,
+                                to_sq=to_sq,
+                            )
+                        )
+                        logger.info(
+                            "Detected opponent move %s->%s",
+                            from_sq,
+                            to_sq,
+                            extra={"username": self.username},
+                        )
+                        found = True
+                        break
+                if not found:
+                    logger.warning(
+                        "Could not detect opponent move from recorded FEN -> current FEN",
+                        extra={"username": self.username},
+                    )
 
         # Initialize analysis if not present
         if self._analysis is None:
@@ -133,8 +172,15 @@ class TrainableAgent(PlayableAgent):
 
             # Track FEN and best move
             self._decision_history.append(
-                Decision(fen=self._analysis.fen, move=best_move)
+                Decision(fen=self._analysis.fen, from_sq=from_square, to_sq=to_square)
             )
+
+            # Remember the position AFTER our decided move so we can detect the
+            # opponent's reply on the next call to _decide_move.
+            new_fen = self._apply_move_to_fen(
+                self._analysis.fen, from_square, to_square
+            )
+            self._last_fen_after_our_move = new_fen
 
             # Clear analysis for next position
             self._analysis = None
