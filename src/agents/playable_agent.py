@@ -165,6 +165,9 @@ class PlayableAgent(CustomizableAgent):
                     11, self._expected_total_moves - self._moves_made
                 )
                 self._allocated_time = self._time_remaining / expected_moves_remaining
+                # Limit opening move time to 5 seconds on first move
+                if self._moves_made == 0:
+                    self._allocated_time = min(self._allocated_time, 5.0)
             self._last_calculation_time = time.time()
 
             logger.debug(
