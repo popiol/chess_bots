@@ -22,8 +22,8 @@ class HeuristicEvaluator:
 
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
-        self.profitable_weight = 0.26
-        self.material_weight = 0.38
+        self.profitable_weight = 0.28
+        self.material_weight = 0.36
         self.mobility_weight = 0.04
         self.king_weight = 0.04
         self.castling_weight = 0.04
