@@ -5,7 +5,6 @@ import gc
 import logging
 import random
 import time
-import tracemalloc
 from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
@@ -192,13 +191,6 @@ class AgentRunner:
 
                 # Force garbage collection and log memory usage
                 gc.collect()
-                snapshot = tracemalloc.take_snapshot()
-                top_stats = snapshot.statistics("lineno")
-                logger.info(
-                    "Memory top 10 after session end:", extra={"username": username}
-                )
-                for stat in top_stats[:10]:
-                    logger.info(str(stat), extra={"username": username})
 
     @staticmethod
     def _random_username() -> str:
@@ -241,9 +233,6 @@ class AgentRunner:
 
 
 def main() -> None:
-    # Start memory tracking
-    tracemalloc.start()
-
     classpath_map = {
         "NeuralNetworkAgent": "src.agents.neural_network_agent.NeuralNetworkAgent",
         "StockfishAgent": "src.agents.stockfish_agent.StockfishAgent",
