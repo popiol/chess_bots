@@ -276,8 +276,8 @@ class NeuralNetworkAgent(TrainableAgent):
             )
 
             # Average the neural network and heuristic evaluations
-            avg_eval = 0.1 * nn_eval_val + 0.9 * heuristic_eval
-            avg_dec = 0.1 * nn_dec_val + 0.9 * heuristic_dec
+            avg_eval = 0 * nn_eval_val + 1 * heuristic_eval
+            avg_dec = 0 * nn_dec_val + 1 * heuristic_dec
 
             candidates.append(
                 (
