@@ -232,13 +232,13 @@ class HeuristicEvaluator:
 
         Checks both colors and returns agent-perspective value in [-1,1].
         """
-        # After the move, board_after.turn is the side to move (the opponent).
-        opp_in_check = bool(board_after.is_check())
-
-        # To determine whether our king is in check, flip turn and ask is_check().
-        tmp = board_after.copy()
-        tmp.turn = not tmp.turn
-        our_in_check = bool(tmp.is_check())
+        our_color = chess.WHITE if is_white else chess.BLACK
+        if board_after.turn == our_color:
+            our_in_check = bool(board_after.is_check())
+            opp_in_check = False
+        else:
+            opp_in_check = bool(board_after.is_check())
+            our_in_check = False
 
         if opp_in_check and not our_in_check:
             return 1.0
