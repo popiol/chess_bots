@@ -506,3 +506,7 @@ class NeuralNetworkAgent(TrainableAgent):
                 exc_info=True,
                 extra={"username": self.username},
             )
+
+    def __del__(self):
+        if self.model is not None:
+            del self.model

@@ -88,9 +88,10 @@ class AgentManager:
         self._repo.update_session_times(
             agent.username, None, datetime.now(timezone.utc)
         )
-        web_client = self._session_clients.pop(username, None)
-        if web_client is not None:
-            web_client.close()
+        web_client = self._session_clients.pop(username)
+        web_client.close()
+        del web_client
+        del agent
         logger.info("Session ended", extra={"username": username})
 
     def active_session(self, username: str) -> Agent | None:
