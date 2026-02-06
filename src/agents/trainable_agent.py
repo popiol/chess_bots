@@ -129,13 +129,13 @@ class TrainableAgent(PlayableAgent):
             )
 
         # log current predictions
-        logger.info(
+        logger.debug(
             "Current predictions for FEN: %s",
             self._analysis.fen,
             extra={"username": self.username},
         )
         for move in self._analysis.predictions:
-            logger.info(
+            logger.debug(
                 "Candidate move %s->%s eval: %.2f decisive: %.2f",
                 move.from_sq,
                 move.to_sq,
