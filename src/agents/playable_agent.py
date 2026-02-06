@@ -147,10 +147,7 @@ class PlayableAgent(CustomizableAgent):
                 )
                 self._web_client.offer_draw()
                 self._last_decisive = None
-            logger.info("Not our turn", extra={"username": self.username})
             return
-
-        logger.info("Our turn to move", extra={"username": self.username})
 
         # It's our turn - get time remaining
         self._time_remaining = self._web_client.get_time_remaining()
@@ -183,8 +180,18 @@ class PlayableAgent(CustomizableAgent):
         else:
             self._allocated_time = None
 
-        # Decide which move to make
+        # Make sure current fen has our turn to move
         assert self._current_fen is not None
+        if self._current_fen.split()[1] != (
+            "w" if self._player_color == "white" else "b"
+        ):
+            logger.info(
+                "Waiting for opponent's move to reflect in FEN",
+                extra={"username": self.username},
+            )
+            return
+
+        # Decide which move to make
         move = self._decide_move(self._current_fen)
         if move is None:
             self._is_thinking = True
