@@ -22,17 +22,17 @@ class HeuristicEvaluator:
 
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
-        self.profitable_weight = 0.28
-        self.material_weight = 0.36
-        self.mobility_weight = 0.04
-        self.king_weight = 0.04
-        self.castling_weight = 0.04
-        self.center_weight = 0.04
-        self.undeveloped_weight = 0.04
-        self.passed_weight = 0.04
-        self.doubled_weight = 0.04
-        self.isolated_weight = 0.04
-        self.check_weight = 0.04
+        self.profitable_weight = 0  # 0.28
+        self.material_weight = 1  # 0.34
+        self.mobility_weight = 0  # 0.04
+        self.king_weight = 0  # 0.04
+        self.castling_weight = 0  # 0.04
+        self.center_weight = 0  # 0.04
+        self.undeveloped_weight = 0  # 0.04
+        self.passed_weight = 0  # 0.04
+        self.doubled_weight = 0  # 0.04
+        self.isolated_weight = 0  # 0.04
+        self.check_weight = 0  # 0.04
 
     def evaluate_position(
         self, board: chess.Board, is_white: bool
