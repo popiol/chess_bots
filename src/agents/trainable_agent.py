@@ -111,58 +111,8 @@ class TrainableAgent(PlayableAgent):
             "Deciding move for FEN: %s", current_fen, extra={"username": self.username}
         )
 
-        # If we previously recorded the FEN after our move, compare it to the
-        # current FEN to detect the opponent's move (if any) and store it.
-        if self._last_fen_after_our_move is not None:
-            if current_fen != self._last_fen_after_our_move:
-                prev_board = chess.Board(self._last_fen_after_our_move)
-                found = False
-                for mv in prev_board.legal_moves:
-                    nb = prev_board.copy()
-                    nb.push(mv)
-                    if nb.fen() == current_fen:
-                        from_sq = chess.square_name(mv.from_square)
-                        to_sq = chess.square_name(mv.to_square)
-                        # Record opponent move as a Decision with fen = position before their move
-                        new_decision = Decision(
-                            fen=self._last_fen_after_our_move,
-                            from_sq=from_sq,
-                            to_sq=to_sq,
-                        )
-
-                        # Avoid appending the same move twice in a row
-                        last = (
-                            self._opponent_move_history[-1]
-                            if self._opponent_move_history
-                            else None
-                        )
-                        if (
-                            last is None
-                            or last.fen != new_decision.fen
-                            or last.from_sq != new_decision.from_sq
-                            or last.to_sq != new_decision.to_sq
-                        ):
-                            self._opponent_move_history.append(new_decision)
-                            logger.info(
-                                "Detected opponent move %s->%s",
-                                from_sq,
-                                to_sq,
-                                extra={"username": self.username},
-                            )
-                        else:
-                            logger.debug(
-                                "Duplicate opponent move ignored %s->%s",
-                                from_sq,
-                                to_sq,
-                                extra={"username": self.username},
-                            )
-                        found = True
-                        break
-                if not found:
-                    logger.warning(
-                        "Could not detect opponent move from recorded FEN -> current FEN",
-                        extra={"username": self.username},
-                    )
+        # Detect and record opponent reply if we previously saved the post-move FEN
+        self._detect_and_record_opponent_move(current_fen)
 
         # Initialize analysis if not present
         if self._analysis is None:
@@ -175,6 +125,22 @@ class TrainableAgent(PlayableAgent):
             logger.debug(
                 "Initialized analysis with %d predictions",
                 len(moves),
+                extra={"username": self.username},
+            )
+
+        # log current predictions
+        logger.info(
+            "Current predictions for FEN: %s",
+            self._analysis.fen,
+            extra={"username": self.username},
+        )
+        for move in self._analysis.predictions:
+            logger.info(
+                "Candidate move %s->%s eval: %.2f decisive: %.2f",
+                move.from_sq,
+                move.to_sq,
+                move.evaluation,
+                move.decisive,
                 extra={"username": self.username},
             )
 
@@ -227,14 +193,14 @@ class TrainableAgent(PlayableAgent):
     def _expand_analysis(self) -> None:
         """Expand the analysis tree by one node using BFS."""
 
-        logger.debug(
+        logger.info(
             "Expanding analysis tree, queue size: %d",
             len(self._expansion_queue),
             extra={"username": self.username},
         )
 
         if not self._expansion_queue:
-            logger.debug(
+            logger.info(
                 "Expansion queue empty, analysis complete",
                 extra={"username": self.username},
             )
@@ -278,7 +244,7 @@ class TrainableAgent(PlayableAgent):
             # Update parent evaluations up the tree
             self._propagate_evaluation(child_node)
 
-            logger.debug(
+            logger.info(
                 "Expanded move %s->%s, %d predictions, queue: %d",
                 from_square,
                 to_square,
@@ -293,7 +259,7 @@ class TrainableAgent(PlayableAgent):
         # If we get here, all moves for this node have been expanded
         # Remove it from the queue and continue on next tick
         self._expansion_queue.pop(0)
-        logger.debug(
+        logger.info(
             "Node fully expanded, removed from queue, remaining: %d",
             len(self._expansion_queue),
             extra={"username": self.username},
@@ -327,14 +293,15 @@ class TrainableAgent(PlayableAgent):
             # Update parent's move that led to current node
             assert current.parent_move is not None
 
-            logger.debug(
-                "Updating parent move eval: %.2f -> %.2f, decisive: %.2f -> %.2f",
-                current.parent_move.evaluation,
-                -avg_eval,
-                current.parent_move.decisive,
-                avg_decisive,
-                extra={"username": self.username},
-            )
+            if current.parent.parent is None:
+                logger.info(
+                    "Updating parent move eval: %.2f -> %.2f, decisive: %.2f -> %.2f",
+                    current.parent_move.evaluation,
+                    -avg_eval,
+                    current.parent_move.decisive,
+                    avg_decisive,
+                    extra={"username": self.username},
+                )
 
             # Update evaluation (negated) and decisive directly
             current.parent_move.evaluation = -avg_eval
@@ -401,3 +368,66 @@ class TrainableAgent(PlayableAgent):
                 our_squares.append(chess.square_name(sq))
 
         return our_squares
+
+    def _detect_and_record_opponent_move(self, current_fen: str) -> None:
+        """If we previously recorded the FEN after our move, compare it to the
+        current FEN to detect the opponent's move (if any) and store it.
+
+        This centralizes the detection logic so it can be tested/refactored
+        independently of `_decide_move`.
+        """
+        if self._last_fen_after_our_move is None:
+            return
+
+        if current_fen == self._last_fen_after_our_move:
+            return
+
+        prev_board = chess.Board(self._last_fen_after_our_move)
+        found = False
+        for mv in prev_board.legal_moves:
+            nb = prev_board.copy()
+            nb.push(mv)
+            if nb.fen() == current_fen:
+                from_sq = chess.square_name(mv.from_square)
+                to_sq = chess.square_name(mv.to_square)
+                # Record opponent move as a Decision with fen = position before their move
+                new_decision = Decision(
+                    fen=self._last_fen_after_our_move,
+                    from_sq=from_sq,
+                    to_sq=to_sq,
+                )
+
+                # Avoid appending the same move twice in a row
+                last = (
+                    self._opponent_move_history[-1]
+                    if self._opponent_move_history
+                    else None
+                )
+                if (
+                    last is None
+                    or last.fen != new_decision.fen
+                    or last.from_sq != new_decision.from_sq
+                    or last.to_sq != new_decision.to_sq
+                ):
+                    self._opponent_move_history.append(new_decision)
+                    logger.info(
+                        "Detected opponent move %s->%s",
+                        from_sq,
+                        to_sq,
+                        extra={"username": self.username},
+                    )
+                else:
+                    logger.debug(
+                        "Duplicate opponent move ignored %s->%s",
+                        from_sq,
+                        to_sq,
+                        extra={"username": self.username},
+                    )
+                found = True
+                break
+
+        if not found:
+            logger.warning(
+                "Could not detect opponent move from recorded FEN -> current FEN",
+                extra={"username": self.username},
+            )
