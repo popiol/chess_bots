@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
 
 from src.web.config import BrowserConfig
 from src.web.selectors import SiteSelectors
@@ -37,14 +36,8 @@ class ChessWebClient:
         self.state = SessionState()
 
     def start(self) -> None:
-        if self._playwright is None:
-            self._playwright = sync_playwright().start()
-            self._owns_playwright = True
-        if self._browser is None:
-            self._browser = self._playwright.chromium.launch(
-                headless=self._config.headless, slow_mo=self._config.slow_mo_ms
-            )
-            self._owns_browser = True
+        assert self._playwright is not None, "Playwright instance not provided"
+        assert self._browser is not None, "Browser instance not provided"
         self._context = self._browser.new_context()
         self._page = self._context.new_page()
         self._page.set_default_navigation_timeout(self._config.navigation_timeout_ms)

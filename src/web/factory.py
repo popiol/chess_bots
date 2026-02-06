@@ -18,9 +18,23 @@ class WebClientFactory:
         self._config = config
         self._selectors = selectors
         self._playwright = sync_playwright().start()
+        # Use conservative launch args to reduce per-process memory usage.
+        launch_args = [
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-background-timer-throttling",
+            "--disable-breakpad",
+            "--no-first-run",
+            "--safebrowsing-disable-download-protection",
+        ]
+
         self._browser = self._playwright.chromium.launch(
             headless=config.headless,
             slow_mo=config.slow_mo_ms,
+            args=launch_args,
         )
 
     def create_client(self) -> ChessWebClient:

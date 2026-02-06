@@ -19,7 +19,9 @@ class StockfishAgent(TrainableAgent):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.stockfish_path = "stockfish"
-        self._sf = Stockfish(path=self.stockfish_path)
+        self._sf = Stockfish(
+            path=self.stockfish_path, parameters={"Hash": 8, "Threads": 1}
+        )
         self._sf.set_depth(1)
 
     def _predict(self, fen: str, our_squares: List[str]) -> List[PredictionResult]:
