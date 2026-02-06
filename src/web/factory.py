@@ -31,7 +31,7 @@ class WebClientFactory:
             "--safebrowsing-disable-download-protection",
         ]
 
-        self._browser = self._playwright.firefox.launch(
+        self._browser = self._playwright.chromium.launch(
             headless=config.headless,
             slow_mo=config.slow_mo_ms,
             args=launch_args,
