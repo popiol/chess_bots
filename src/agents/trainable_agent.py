@@ -193,14 +193,14 @@ class TrainableAgent(PlayableAgent):
     def _expand_analysis(self) -> None:
         """Expand the analysis tree by one node using BFS."""
 
-        logger.info(
+        logger.debug(
             "Expanding analysis tree, queue size: %d",
             len(self._expansion_queue),
             extra={"username": self.username},
         )
 
         if not self._expansion_queue:
-            logger.info(
+            logger.debug(
                 "Expansion queue empty, analysis complete",
                 extra={"username": self.username},
             )
@@ -244,7 +244,7 @@ class TrainableAgent(PlayableAgent):
             # Update parent evaluations up the tree
             self._propagate_evaluation(child_node)
 
-            logger.info(
+            logger.debug(
                 "Expanded move %s->%s, %d predictions, queue: %d",
                 from_square,
                 to_square,
@@ -253,7 +253,7 @@ class TrainableAgent(PlayableAgent):
                 extra={"username": self.username},
             )
             for pred in new_predictions:
-                logger.info(
+                logger.debug(
                     "Child node candidate move %s->%s eval: %.2f decisive: %.2f",
                     pred.from_sq,
                     pred.to_sq,
@@ -268,7 +268,7 @@ class TrainableAgent(PlayableAgent):
         # If we get here, all moves for this node have been expanded
         # Remove it from the queue and continue on next tick
         self._expansion_queue.pop(0)
-        logger.info(
+        logger.debug(
             "Node fully expanded, removed from queue, remaining: %d",
             len(self._expansion_queue),
             extra={"username": self.username},
@@ -302,7 +302,7 @@ class TrainableAgent(PlayableAgent):
             # Update parent's move that led to current node
             assert current.parent_move is not None
 
-            logger.info(
+            logger.debug(
                 "Updating parent move eval: %.2f -> %.2f, decisive: %.2f -> %.2f",
                 current.parent_move.evaluation,
                 -avg_eval,

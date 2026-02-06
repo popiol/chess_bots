@@ -147,7 +147,10 @@ class PlayableAgent(CustomizableAgent):
                 )
                 self._web_client.offer_draw()
                 self._last_decisive = None
+            logger.info("Not our turn", extra={"username": self.username})
             return
+
+        logger.info("Our turn to move", extra={"username": self.username})
 
         # It's our turn - get time remaining
         self._time_remaining = self._web_client.get_time_remaining()
