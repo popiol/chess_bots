@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import gc
 import logging
+import tracemalloc
 from datetime import datetime, timezone
 from importlib import import_module
 from typing import Callable, Type
+
+import psutil
 
 from src.agents.base import Agent
 from src.db.repository import AgentRepository
@@ -91,7 +95,47 @@ class AgentManager:
         web_client = self._session_clients.pop(username)
         web_client.close()
         del web_client
-        del agent
+
+        # Try to free Python-level resources and log memory usage (RSS and tracemalloc)
+        try:
+            del agent
+            gc.collect()
+
+            proc = psutil.Process()
+            rss = proc.memory_info().rss
+            if tracemalloc.is_tracing():
+                traced_current, traced_peak = tracemalloc.get_traced_memory()
+            else:
+                traced_current = traced_peak = 0
+
+            logger.info(
+                "Memory after session end: RSS=%.1fMB, tracemalloc current=%.1fMB, peak=%.1fMB",
+                rss / 1024.0 / 1024.0,
+                traced_current / 1024.0 / 1024.0,
+                traced_peak / 1024.0 / 1024.0,
+                extra={"username": username},
+            )
+
+            # Log child processes (browsers, engines) which often hold large native memory
+            for child in proc.children(recursive=True):
+                try:
+                    mem = child.memory_info().rss
+                    cmd = " ".join(child.cmdline())
+                    logger.info(
+                        "Child pid=%d name=%s RSS=%.1fMB cmd=%s",
+                        child.pid,
+                        child.name(),
+                        mem / 1024.0 / 1024.0,
+                        cmd,
+                        extra={"username": username},
+                    )
+                except psutil.NoSuchProcess:
+                    continue
+        except Exception:
+            logger.exception(
+                "Failed during end_session cleanup", extra={"username": username}
+            )
+
         logger.info("Session ended", extra={"username": username})
 
     def active_session(self, username: str) -> Agent | None:
