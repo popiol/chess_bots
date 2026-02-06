@@ -22,7 +22,9 @@ class HeuristicEvaluator:
 
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
-        self.profitable_weight = 1  # 0.28
+        # Separate weights for profitable attack gains (our side and opponent)
+        self.profitable_our_weight = 0  # weight for our profitable attack score
+        self.profitable_opp_weight = 1  # weight for opponent profitable attack score
         self.material_weight = 0  # 0.34
         self.mobility_weight = 0  # 0.04
         self.king_weight = 0  # 0.04
@@ -54,7 +56,7 @@ class HeuristicEvaluator:
         king_eval = self._king_safety_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
-        profitable_attack_eval = self._profitable_attack_eval(board, is_white)
+        profitable_our, profitable_opp = self._profitable_attack_eval(board, is_white)
         center_eval = self._center_control_eval(board, is_white)
         undeveloped_eval = self._undeveloped_pieces_eval(board, is_white)
         doubled_eval = self._doubled_pawns_eval(board, is_white)
@@ -68,7 +70,8 @@ class HeuristicEvaluator:
             + self.king_weight * king_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
-            + self.profitable_weight * profitable_attack_eval
+            + self.profitable_our_weight * profitable_our
+            - self.profitable_opp_weight * profitable_opp
             + self.center_weight * center_eval
             + self.undeveloped_weight * undeveloped_eval
             + self.doubled_weight * doubled_eval
@@ -84,7 +87,8 @@ class HeuristicEvaluator:
             + self.king_weight * abs(king_eval)
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
-            + self.profitable_weight * abs(profitable_attack_eval)
+            + self.profitable_our_weight * abs(profitable_our)
+            + self.profitable_opp_weight * abs(profitable_opp)
             + self.center_weight * abs(center_eval)
             + self.undeveloped_weight * abs(undeveloped_eval)
             + self.doubled_weight * abs(doubled_eval)
@@ -244,14 +248,15 @@ class HeuristicEvaluator:
 
     def _profitable_attack_eval(
         self, board_after: chess.Board, is_white: bool
-    ) -> float:
+    ) -> tuple[float, float]:
         """Evaluate material exchange on attacked squares.
 
         For every square occupied by a piece, if it is attacked by the opponent,
         estimate the potential material change after a series of captures.
         We consider min(attackers, defenders) exchanges, prioritizing weaker pieces.
 
-        Returns agent-perspective normalized value in [-1,1].
+        Returns:
+            Tuple of (scaled_our_gain, scaled_opp_gain) both in [0,1].
         """
         white_gain = 0.0
         black_gain = 0.0
@@ -301,14 +306,12 @@ class HeuristicEvaluator:
         our_gain = white_gain if is_white else black_gain
         opp_gain = black_gain if is_white else white_gain
 
-        diff = our_gain - opp_gain
-        if diff == 0:
-            return 0.0
-
-        # Scale: A queen trade is 9, so gains can be large.
+        # Scale both gains independently to [0,1]
         max_gain = 15.0
-        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_gain))
-        return float(np.clip(scaled, -1.0, 1.0))
+        scaled_our = float(np.clip(np.log1p(our_gain) / np.log1p(max_gain), 0.0, 1.0))
+        scaled_opp = float(np.clip(np.log1p(opp_gain) / np.log1p(max_gain), 0.0, 1.0))
+
+        return scaled_our, scaled_opp
 
     def _center_control_eval(self, board_after: chess.Board, is_white: bool) -> float:
         """Evaluate control of central squares d4,e4,d5,e5.
