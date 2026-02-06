@@ -252,6 +252,15 @@ class TrainableAgent(PlayableAgent):
                 len(self._expansion_queue),
                 extra={"username": self.username},
             )
+            for pred in new_predictions:
+                logger.info(
+                    "Child node candidate move %s->%s eval: %.2f decisive: %.2f",
+                    pred.from_sq,
+                    pred.to_sq,
+                    pred.evaluation,
+                    pred.decisive,
+                    extra={"username": self.username},
+                )
 
             # Only expand one move per tick, keep node in queue
             return
@@ -293,15 +302,14 @@ class TrainableAgent(PlayableAgent):
             # Update parent's move that led to current node
             assert current.parent_move is not None
 
-            if current.parent.parent is None:
-                logger.info(
-                    "Updating parent move eval: %.2f -> %.2f, decisive: %.2f -> %.2f",
-                    current.parent_move.evaluation,
-                    -avg_eval,
-                    current.parent_move.decisive,
-                    avg_decisive,
-                    extra={"username": self.username},
-                )
+            logger.info(
+                "Updating parent move eval: %.2f -> %.2f, decisive: %.2f -> %.2f",
+                current.parent_move.evaluation,
+                -avg_eval,
+                current.parent_move.decisive,
+                avg_decisive,
+                extra={"username": self.username},
+            )
 
             # Update evaluation (negated) and decisive directly
             current.parent_move.evaluation = -avg_eval
