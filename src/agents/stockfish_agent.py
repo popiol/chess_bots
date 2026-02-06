@@ -57,8 +57,8 @@ class StockfishAgent(TrainableAgent):
             # Convert to -1..1 scale
             base_eval = self._convert_stockfish_eval(my_raw_score)
 
-            eval_val = base_eval + random.gauss(0, 0.05)
-            decisive = abs(base_eval) + random.gauss(0, 0.05)
+            eval_val = base_eval + max(0, random.gauss(0, 0.1))
+            decisive = abs(base_eval) + max(0, random.gauss(0, 0.1))
 
             candidates.append(
                 {
