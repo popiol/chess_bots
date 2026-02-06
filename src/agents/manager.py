@@ -68,10 +68,11 @@ class AgentManager:
             )
         except Exception:
             web_client.close()
+            del web_client
             raise
 
         self._active_sessions[username] = agent_instance
-        self._session_clients[username] = web_client
+        self._session_clients[username] = web_client  # noqa: F821
         logger.info(
             "Session started class=%s",
             agent_class.__name__,

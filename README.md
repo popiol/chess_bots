@@ -24,9 +24,6 @@ Agents that use a chess web app like humans: register, sign in, join games, play
 - Logs and artifacts capture decisions, timings, and page state.
 - Agent implementations can range from rule-based play to ML-driven policies.
 
-## Status
-Early development.
-
 ## Next ideas
 - Define target site selectors and page flows.
 - Add a minimal play loop with a simple move policy.
