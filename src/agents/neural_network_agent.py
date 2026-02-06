@@ -236,7 +236,9 @@ class NeuralNetworkAgent(TrainableAgent):
         is_white = board.turn
 
         # Iterate over actual legal moves from the board
-        candidates: list[tuple[float, PredictionResult]] = []
+        # TODO: revert change below
+        # candidates: list[tuple[float, PredictionResult]] = []
+        candidates: list = []
 
         for move in board.legal_moves:
             from_sq = chess.square_name(move.from_square)
@@ -263,34 +265,15 @@ class NeuralNetworkAgent(TrainableAgent):
                 board_after, is_white
             )
 
-            logger.debug(
-                "Move %s->%s: NN eval=%.3f, NN dec=%.3f, Validity=%.3f, Heuristic eval=%.3f, Heuristic dec=%.3f",
-                from_sq,
-                to_sq,
-                nn_eval_val,
-                nn_dec_val,
-                validity_score,
-                heuristic_eval,
-                heuristic_dec,
-                extra={"username": self.username},
-            )
-
             # Average the neural network and heuristic evaluations
             avg_eval = 0.1 * nn_eval_val + 0.9 * heuristic_eval
             avg_dec = 0.1 * nn_dec_val + 0.9 * heuristic_dec
 
-            logger.info(
-                "NN eval for move %s->%s: %.3f, Heuristic eval: %.3f, Combined eval: %.3f",
-                from_sq,
-                to_sq,
-                nn_eval_val,
-                heuristic_eval,
-                avg_eval,
-                extra={"username": self.username},
-            )
-
+            # Collect candidate data for sorting and later logging
+            # Structure: (avg_eval, validity_score, PredictionResult, nn_eval, heuristic_eval, nn_dec, heuristic_dec, avg_dec)
             candidates.append(
                 (
+                    avg_eval,
                     validity_score,
                     PredictionResult(
                         from_sq=from_sq,
@@ -298,14 +281,47 @@ class NeuralNetworkAgent(TrainableAgent):
                         evaluation=avg_eval,
                         decisive=avg_dec,
                     ),
+                    nn_eval_val,
+                    heuristic_eval,
+                    nn_dec_val,
+                    heuristic_dec,
+                    avg_dec,
                 )
             )
 
-        # Sort by evaluation descending (best moves first)
-        candidates.sort(key=lambda x: x[1].evaluation, reverse=True)
+        # Sort by average evaluation descending (best moves first)
+        candidates.sort(key=lambda x: x[0], reverse=True)
+
+        # Log top 10 moves with details
+        top_n = min(10, len(candidates))
+        if top_n > 0:
+            logger.info("Top %d moves:", top_n, extra={"username": self.username})
+            for i, c in enumerate(candidates[:top_n], start=1):
+                (
+                    avg_eval,
+                    validity_score,
+                    pred,
+                    nn_eval_v,
+                    heur_v,
+                    nn_dec_v,
+                    heur_dec_v,
+                    avg_dec_v,
+                ) = c
+                logger.info(
+                    "%d: %s->%s avg=%.3f nn=%.3f heur=%.3f valid=%.3f dec=%.3f",
+                    i,
+                    pred.from_sq,
+                    pred.to_sq,
+                    avg_eval,
+                    nn_eval_v,
+                    heur_v,
+                    validity_score,
+                    avg_dec_v,
+                    extra={"username": self.username},
+                )
 
         # Return top N predictions
-        return [c[1] for c in candidates[: self.prediction_count]]
+        return [c[2] for c in candidates[: self.prediction_count]]
 
     def _encode_fen(self, fen: str) -> np.ndarray:
         """Encode FEN string as numerical features for the neural network.
