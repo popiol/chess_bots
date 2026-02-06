@@ -110,16 +110,14 @@ class AgentRunner:
                 return
             self._last_start_time = current_time
 
-            # TODO: revert the change below
-            # usernames = self._manager.list_known_agents()
-            # if not usernames:
-            #     return
-            # active_usernames = self._manager.active_session_usernames()
-            # candidates = [name for name in usernames if name not in active_usernames]
-            # if not candidates:
-            #     return
-            # username = random.choice(candidates)
-            username = "m0r8k2p"
+            usernames = self._manager.list_known_agents()
+            if not usernames:
+                return
+            active_usernames = self._manager.active_session_usernames()
+            candidates = [name for name in usernames if name not in active_usernames]
+            if not candidates:
+                return
+            username = random.choice(candidates)
 
             # Ensure sufficient free memory before starting a new session
             min_bytes = 1000 * 1024 * 1024  # 1000 MB
