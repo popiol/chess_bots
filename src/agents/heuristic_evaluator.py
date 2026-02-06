@@ -24,8 +24,8 @@ class HeuristicEvaluator:
         """Initialize the evaluator with default weights for each metric."""
         # Separate weights for profitable attack gains (our side and opponent)
         self.profitable_our_weight = 0  # weight for our profitable attack score
-        self.profitable_opp_weight = 1  # weight for opponent profitable attack score
-        self.material_weight = 0  # 0.34
+        self.profitable_opp_weight = 0.5  # weight for opponent profitable attack score
+        self.material_weight = 0.5  # 0.34
         self.mobility_weight = 0  # 0.04
         self.king_weight = 0  # 0.04
         self.castling_weight = 0  # 0.04
