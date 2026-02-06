@@ -276,8 +276,18 @@ class NeuralNetworkAgent(TrainableAgent):
             )
 
             # Average the neural network and heuristic evaluations
-            avg_eval = 0 * nn_eval_val + 1 * heuristic_eval
-            avg_dec = 0 * nn_dec_val + 1 * heuristic_dec
+            avg_eval = 0.1 * nn_eval_val + 0.9 * heuristic_eval
+            avg_dec = 0.1 * nn_dec_val + 0.9 * heuristic_dec
+
+            logger.info(
+                "NN eval for move %s->%s: %.3f, Heuristic eval: %.3f, Combined eval: %.3f",
+                from_sq,
+                to_sq,
+                nn_eval_val,
+                heuristic_eval,
+                avg_eval,
+                extra={"username": self.username},
+            )
 
             candidates.append(
                 (

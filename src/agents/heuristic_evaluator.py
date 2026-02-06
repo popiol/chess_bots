@@ -23,9 +23,9 @@ class HeuristicEvaluator:
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
         # Separate weights for profitable attack gains (our side and opponent)
-        self.material_weight = 0.28
-        self.profitable_opp_weight = 0.28
-        self.profitable_our_weight = 0.08
+        self.material_weight = 0.3
+        self.opp_attack_weight = 0.3
+        self.our_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.king_weight = 0.04
         self.castling_weight = 0.04
@@ -56,7 +56,7 @@ class HeuristicEvaluator:
         king_eval = self._king_safety_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
-        profitable_our, profitable_opp = self._profitable_attack_eval(board, is_white)
+        our_attack, opp_attack = self._profitable_attack_eval(board, is_white)
         center_eval = self._center_control_eval(board, is_white)
         undeveloped_eval = self._undeveloped_pieces_eval(board, is_white)
         doubled_eval = self._doubled_pawns_eval(board, is_white)
@@ -70,8 +70,8 @@ class HeuristicEvaluator:
             + self.king_weight * king_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
-            + self.profitable_our_weight * profitable_our
-            - self.profitable_opp_weight * profitable_opp
+            + self.our_attack_weight * our_attack
+            - self.opp_attack_weight * opp_attack
             + self.center_weight * center_eval
             + self.undeveloped_weight * undeveloped_eval
             + self.doubled_weight * doubled_eval
@@ -87,8 +87,8 @@ class HeuristicEvaluator:
             + self.king_weight * abs(king_eval)
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
-            + self.profitable_our_weight * abs(profitable_our)
-            + self.profitable_opp_weight * abs(profitable_opp)
+            + self.our_attack_weight * abs(our_attack)
+            + self.opp_attack_weight * abs(opp_attack)
             + self.center_weight * abs(center_eval)
             + self.undeveloped_weight * abs(undeveloped_eval)
             + self.doubled_weight * abs(doubled_eval)
