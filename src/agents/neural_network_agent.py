@@ -342,7 +342,13 @@ class NeuralNetworkAgent(TrainableAgent):
 
     def _on_game_end(self, score: int | None, reason: str | None) -> None:
         """Called when the game ends. Trains the model based on the game result."""
-        assert score is not None, "Game score is missing"
+        if score is None:
+            logger.info(
+                "Game ended without a score (reason=%s); skipping training.",
+                reason,
+                extra={"username": self.username},
+            )
+            return
 
         if self._moves_made < 2 or (
             reason in ["timeout", "agreement"] and self._moves_made < 10
