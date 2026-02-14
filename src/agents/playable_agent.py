@@ -25,7 +25,7 @@ class PlayableAgent(CustomizableAgent):
         self._draw_threshold: float = 0.01
         self._last_decisive: float | None = None
         self._time_remaining: int | None = None
-        self._expected_total_moves: int = 40  # Expected moves per player
+        self._expected_total_moves: int = 20  # Expected moves per player
         self._allocated_time: float | None = None
         self._last_calculation_time: float | None = (
             None  # System time at last calculation
@@ -35,6 +35,9 @@ class PlayableAgent(CustomizableAgent):
         self._current_fen: str | None = None  # Current position FEN
         self._made_decisions: list[tuple[str, str]] = []
         self._resigned: bool = False
+        # Thinking delay: remember when we started thinking and a pending decision
+        self._thinking_start_time: float | None = None
+        self._pending_move: tuple[str, str, float, float] | None = None
 
     def _handle_move_failure(self, fen: str, from_square: str, to_square: str) -> None:
         """Handle a move execution failure (e.g. invalid move)."""
@@ -165,9 +168,6 @@ class PlayableAgent(CustomizableAgent):
                     11, self._expected_total_moves - self._moves_made
                 )
                 self._allocated_time = self._time_remaining / expected_moves_remaining
-                # Limit opening move time to 5 seconds on first move
-                if self._moves_made == 0:
-                    self._allocated_time = min(self._allocated_time, 5.0)
             self._last_calculation_time = time.time()
 
             logger.debug(
@@ -180,25 +180,29 @@ class PlayableAgent(CustomizableAgent):
         else:
             self._allocated_time = None
 
-        # Make sure current fen has our turn to move
-        assert self._current_fen is not None
-        if self._current_fen.split()[1] != (
-            "w" if self._player_color == "white" else "b"
-        ):
-            logger.info(
-                "Waiting for opponent's move to reflect in FEN",
-                extra={"username": self.username},
-            )
-            return
-
         # Decide which move to make
-        move = self._decide_move(self._current_fen)
-        if move is None:
+        assert self._current_fen is not None
+
+        # If we're not already thinking, mark the start of thinking now
+        if self._thinking_start_time is None:
+            self._thinking_start_time = time.time()
             self._is_thinking = True
+
+        # If no pending move yet, decide one and return immediately (will execute later)
+        if self._pending_move is None:
+            move = self._decide_move(self._current_fen)
+            self._pending_move = move
             return
 
-        from_square, to_square, evaluation, decisive = move
+        # A pending move exists — only execute it after the thinking delay
+        if (time.time() - self._thinking_start_time) < 0.5:
+            return
+
+        # Enough thinking time elapsed — clear pending state and proceed
+        from_square, to_square, evaluation, decisive = self._pending_move
         self._is_thinking = False
+        self._thinking_start_time = None
+        self._pending_move = None
 
         # Check if position is too bad and we should resign
         if evaluation < self._resign_threshold:
