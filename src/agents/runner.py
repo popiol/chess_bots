@@ -238,8 +238,7 @@ def main() -> None:
         "StockfishAgent": "src.agents.stockfish_agent.StockfishAgent",
     }
     available_classnames = list(classpath_map.keys())
-    # base_url = "https://playbullet.gg"
-    base_url = "http://127.0.0.1:80"
+    base_url = "https://playbullet.gg"
     parser = argparse.ArgumentParser(description="Run the agent runner loop.")
     parser.add_argument(
         "--classname",
