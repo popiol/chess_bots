@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 import requests
+import websocket
 
 from src.web.chess_client import ChessClient
 
@@ -273,7 +274,13 @@ class ChessAPIClient(ChessClient):
         # Prefer live websocket state if available
         if self._last_state:
             return self._last_state
-        self._ensure_ws_connected()
+        # try to ensure websocket is connected (best-effort; do not raise)
+        try:
+            self._ensure_ws_connected()
+        except Exception:
+            logger.debug(
+                "WebSocket not available when fetching game state; falling back to REST"
+            )
         if not self._game_id:
             return None
         url = f"{self.base_url}/api/games/{self._game_id}"
@@ -298,30 +305,25 @@ class ChessAPIClient(ChessClient):
     def _ensure_ws_connected(self) -> None:
         if self._ws is not None:
             return
-        try:
-            import websocket
-
-            if not self._matched_game:
-                raise RuntimeError("No matched game info available for websocket")
-            ws_url = self._matched_game.get("websocket_url")
-            token = self._matched_game.get("game_token")
-            if not ws_url or not token:
-                raise RuntimeError("Missing websocket_url or game_token in match info")
-            # websocket_url from API may be a path - build absolute
-            if ws_url.startswith("/"):
-                scheme_host = self.base_url
-                ws_url_full = (
-                    scheme_host.replace("http", "ws") + ws_url + f"?game_token={token}"
-                )
-            else:
-                ws_url_full = ws_url
-            self._ws = websocket.create_connection(ws_url_full)
-            # start reader thread
-            self._ws_running = True
-            self._ws_thread = threading.Thread(target=self._ws_reader, daemon=True)
-            self._ws_thread.start()
-        except Exception as e:
-            raise RuntimeError("WebSocket unavailable for game actions") from e
+        if not self._matched_game:
+            raise RuntimeError("No matched game info available for websocket")
+        ws_url = self._matched_game.get("websocket_url")
+        token = self._matched_game.get("game_token")
+        if not ws_url or not token:
+            raise RuntimeError("Missing websocket_url or game_token in match info")
+        # websocket_url from API may be a path - build absolute
+        if ws_url.startswith("/"):
+            scheme_host = self.base_url
+            ws_url_full = (
+                scheme_host.replace("http", "ws") + ws_url + f"?game_token={token}"
+            )
+        else:
+            ws_url_full = ws_url
+        self._ws = websocket.create_connection(ws_url_full)
+        # start reader thread
+        self._ws_running = True
+        self._ws_thread = threading.Thread(target=self._ws_reader, daemon=True)
+        self._ws_thread.start()
 
     def _ws_reader(self) -> None:
         # Read messages from websocket and update live state
