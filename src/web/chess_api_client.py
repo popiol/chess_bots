@@ -65,13 +65,13 @@ class ChessAPIClient(ChessClient):
 
     # --- auth ---
     def sign_up(self, email: str, username: str, password: str) -> None:
-        url = f"{self.base_url}/api/auth/register"
+        url = f"{self.base_url}/api/identity/auth/register"
         payload = {"username": username, "email": email, "password": password}
         r = self._session.post(url, json=payload, timeout=10)
         r.raise_for_status()
 
     def sign_in(self, username: str, password: str) -> None:
-        url = f"{self.base_url}/api/auth/login"
+        url = f"{self.base_url}/api/identity/auth/login"
         # OAuth2 password-style form
         r = self._session.post(
             url, data={"username": username, "password": password}, timeout=10
@@ -88,7 +88,7 @@ class ChessAPIClient(ChessClient):
     def sign_out(self) -> None:
         if not self._access_token:
             return
-        url = f"{self.base_url}/api/v1/auth/logout"
+        url = f"{self.base_url}/api/identity/auth/logout"
         try:
             r = self._session.post(url, timeout=5)
             r.raise_for_status()
