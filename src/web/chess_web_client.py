@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from src.web.chess_client import ChessClient
 from src.web.config import BrowserConfig
 from src.web.selectors import SiteSelectors
 
@@ -17,7 +18,7 @@ class SessionState:
     guest_mode: bool = False
 
 
-class ChessWebClient:
+class ChessWebClient(ChessClient):
     def __init__(
         self,
         config: BrowserConfig,
@@ -175,14 +176,6 @@ class ChessWebClient:
         """
         self._click(self._selectors.square(from_square))
         self._click(self._selectors.square(to_square))
-
-    def click_square(self, square: str) -> None:
-        """Click a specific square on the chess board.
-
-        Args:
-            square: Square in algebraic notation (e.g. 'e4', 'a1')
-        """
-        self._click(self._selectors.square(square))
 
     def get_current_fen(self) -> str:
         """Get the current FEN (Forsyth-Edwards Notation) of the game position.

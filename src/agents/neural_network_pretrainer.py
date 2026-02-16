@@ -45,8 +45,8 @@ class NeuralNetworkPretrainer:
         test_split: float = 0.2,
         shuffle: bool = True,
         random_seed: int = 42,
-        max_samples: int = 1_000_000,
-        read_limit: int = 1_000_000,
+        max_samples: int = 500_000,
+        read_limit: int = 100_000,
     ) -> None:
         self._agent = agent
         self._data_path = Path(data_path)
@@ -729,6 +729,12 @@ def main() -> int:
         default=None,
         help="Maximum raw CSV rows to read when scanning/loading (stop early)",
     )
+    train_parser.add_argument(
+        "--epochs",
+        type=int,
+        default=1,
+        help="Number of training epochs",
+    )
 
     # Evaluate command
     eval_parser = subparsers.add_parser("evaluate", help="Evaluate an existing model")
@@ -771,7 +777,7 @@ def main() -> int:
     try:
         if args.command == "train":
             logger.info("Starting training...")
-            tester.train()
+            tester.train(epochs=args.epochs)
             logger.info("Training complete")
             return 0
 

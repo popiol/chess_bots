@@ -33,6 +33,8 @@ class CustomizableAgent(Agent, ABC):
         self._draw_wait_start_time = 0.0
         self._last_stage_change_time = 0.0
         self._last_post_login_log_time = 0.0
+        # Timestamp for rate-limiting is_play_ready() checks
+        self._last_play_ready_check_time = 0.0
         self._time_control_weights: dict[int, int] = {}
         self._consecutive_failures = 0
         self._post_login_timeout: float = 10.0
@@ -234,7 +236,13 @@ class CustomizableAgent(Agent, ABC):
         if current_time - self._last_stage_change_time < 1.0:
             return
 
-        if not self._web_client.is_play_ready():
+        # Rate-limit is_play_ready checks to once per second
+        ready = False
+        if current_time - self._last_play_ready_check_time >= 1.0:
+            self._last_play_ready_check_time = current_time
+            ready = self._web_client.is_play_ready()
+
+        if not ready:
             # Timeout exceeded
             if current_time - self._last_stage_change_time >= self._matchmaking_timeout:
                 logger.warning(

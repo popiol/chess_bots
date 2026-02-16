@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import random
 from pathlib import Path
 
 import chess
@@ -114,12 +113,7 @@ class NeuralNetworkAgent(TrainableAgent):
             )
             self.model = tf.keras.models.load_model(model_path)
         else:
-            base_choices = [
-                "models/base_s.keras",
-                "models/base_m.keras",
-                "models/base_l.keras",
-            ]
-            base_path = Path(random.choice(base_choices))
+            base_path = Path("models/base_s.keras")
             logger.info(
                 "Loading base model from %s",
                 base_path,

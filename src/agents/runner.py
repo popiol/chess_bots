@@ -16,9 +16,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from src.agents.manager import AgentManager
 from src.db.repository import AgentRepository
-from src.web.config import BrowserConfig
-from src.web.factory import WebClientFactory
-from src.web.selectors import site_selectors
+from src.web.factory import APIClientFactory
 
 LOG_DIR = Path("logs")
 
@@ -240,7 +238,8 @@ def main() -> None:
         "StockfishAgent": "src.agents.stockfish_agent.StockfishAgent",
     }
     available_classnames = list(classpath_map.keys())
-    base_url = "https://playbullet.gg"
+    # base_url = "https://playbullet.gg"
+    base_url = "http://127.0.0.1:80"
     parser = argparse.ArgumentParser(description="Run the agent runner loop.")
     parser.add_argument(
         "--classname",
@@ -274,11 +273,12 @@ def main() -> None:
     root_logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
     root_logger.addHandler(handler)
     repo = AgentRepository.from_env()
-    web_factory = WebClientFactory(
-        BrowserConfig(base_url=base_url),
-        site_selectors(),
-    )
-    manager = AgentManager(repo, web_factory.create_client)
+    # web_factory = WebClientFactory(
+    #     BrowserConfig(base_url=base_url),
+    #     site_selectors(),
+    # )
+    client_factory = APIClientFactory(base_url=base_url)
+    manager = AgentManager(repo, client_factory)
     runner = AgentRunner(
         manager,
         classpaths=list(classpath_map.values()),
@@ -293,7 +293,7 @@ def main() -> None:
         else:
             runner.main_loop()
     finally:
-        web_factory.close()
+        client_factory.close()
 
 
 if __name__ == "__main__":

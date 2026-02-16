@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from importlib import import_module
-from typing import Callable, Type
-
+from typing import Type
 
 from src.agents.base import Agent
 from src.db.repository import AgentRepository
 from src.db.schema import AgentMetadata
-from src.web.client import ChessWebClient
+from src.web.chess_client import ChessClient
+from src.web.factory import ClientFactory
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,11 @@ class AgentManager:
     def __init__(
         self,
         repo: AgentRepository,
-        web_client_factory: Callable[[], ChessWebClient],
+        client_factory: ClientFactory,
     ) -> None:
-        self._web_client_factory = web_client_factory
+        self._client_factory = client_factory
         self._active_sessions: dict[str, Agent] = {}
-        self._session_clients: dict[str, ChessWebClient] = {}
+        self._session_clients: dict[str, ChessClient] = {}
         self._repo = repo
 
     def create_agent(
@@ -54,7 +54,7 @@ class AgentManager:
             raise RuntimeError(f"Unknown agent: {username}")
 
         agent_class = self._load_agent_class(agent_meta.classpath)
-        web_client = self._web_client_factory()
+        web_client = self._client_factory.create_client()
         try:
             agent_instance = agent_class(
                 agent_meta.username,

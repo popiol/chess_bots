@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 
-from src.web.client import ChessWebClient
+from src.web.chess_client import ChessClient
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class Agent(ABC):
         password: str,
         email: str,
         classpath: str,
-        web_client: ChessWebClient,
+        web_client: ChessClient,
     ) -> None:
         self._username = username
         self._password = password
