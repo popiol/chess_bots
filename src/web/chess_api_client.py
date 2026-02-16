@@ -69,6 +69,7 @@ class ChessAPIClient(ChessClient):
         url = f"{self.base_url}/api/identity/auth/register"
         payload = {"username": username, "email": email, "password": password}
         r = self._session.post(url, json=payload, timeout=10)
+        logger.info("Sign-up response: %s", r.text)
         r.raise_for_status()
 
     def sign_in(self, username: str, password: str) -> None:
@@ -261,7 +262,7 @@ class ChessAPIClient(ChessClient):
         return list(range(5))
 
     def is_sign_in_available(self) -> bool:
-        return True
+        return not self.signed_in
 
     def is_sign_out_available(self) -> bool:
         return self.signed_in
