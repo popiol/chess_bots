@@ -6,3 +6,4 @@ tensorflow-cpu
 chess
 stockfish
 psutil
+websocket

@@ -113,14 +113,14 @@ class ChessAPIClient(ChessClient):
         self._access_token = None
         self.signed_in = False
         self.guest_mode = True
-        self.queue_play_now()
+        self.queue_play_now(rated=False)
 
-    def queue_play_now(self) -> None:
+    def queue_play_now(self, rated: bool = True) -> None:
         # Join matchmaking with defaults unless provided
         params = dict(
             time_control_initial=self._match_params.get("time_control_initial", 60),
             time_control_increment=self._match_params.get("time_control_increment", 0),
-            mode=self._match_params.get("mode", "casual"),
+            mode="rated" if rated else "casual",
             auth_mode=("account" if self.signed_in else "guest"),
         )
         logger.info("Joining matchmaking with params: %s", params)
