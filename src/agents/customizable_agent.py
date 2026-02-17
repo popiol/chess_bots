@@ -110,7 +110,7 @@ class CustomizableAgent(Agent, ABC):
                     self._password,
                     extra={"username": self.username},
                 )
-                self._web_client.sign_up(
+                self._chess_client.sign_up(
                     email=self._email,
                     username=self.username,
                     password=self._password,
@@ -118,14 +118,14 @@ class CustomizableAgent(Agent, ABC):
                 self._auth_action = "signed_up"
 
             if self._registered and self._auth_action is None:
-                if not self._web_client.is_sign_in_available():
+                if not self._chess_client.is_sign_in_available():
                     logger.info(
                         "Sign-in button not available, assuming already signed in",
                         extra={"username": self.username},
                     )
                 else:
                     logger.info("Signing in", extra={"username": self.username})
-                    self._web_client.sign_in(
+                    self._chess_client.sign_in(
                         username=self.username,
                         password=self._password,
                     )
@@ -145,7 +145,7 @@ class CustomizableAgent(Agent, ABC):
             self._last_stage_change_time = current_time
             return
 
-        if not self._web_client.is_post_login_ready():
+        if not self._chess_client.is_post_login_ready():
             # Timeout exceeded
             if current_time - self._last_stage_change_time >= self._post_login_timeout:
                 if self._auth_action == "signed_up":
@@ -187,9 +187,9 @@ class CustomizableAgent(Agent, ABC):
             self._registered = True
             logger.info("Registration confirmed", extra={"username": self.username})
             # Now sign in
-            if self._web_client.is_sign_in_available():
+            if self._chess_client.is_sign_in_available():
                 logger.info("Signing in", extra={"username": self.username})
-                self._web_client.sign_in(
+                self._chess_client.sign_in(
                     username=self.username,
                     password=self._password,
                 )
@@ -214,7 +214,7 @@ class CustomizableAgent(Agent, ABC):
             index,
             extra={"username": self.username},
         )
-        self._web_client.select_time_control(index)
+        self._chess_client.select_time_control(index)
         self._stage = "queue"
         self._last_stage_change_time = current_time
 
@@ -224,10 +224,10 @@ class CustomizableAgent(Agent, ABC):
             return
         if self._guest:
             logger.info("Play as guest", extra={"username": self.username})
-            self._web_client.play_as_guest()
+            self._chess_client.play_as_guest()
         else:
             logger.info("Play now", extra={"username": self.username})
-            self._web_client.queue_play_now()
+            self._chess_client.queue_play_now()
         self._stage = "matchmaking"
         self._last_stage_change_time = current_time
 
@@ -240,7 +240,7 @@ class CustomizableAgent(Agent, ABC):
         ready = False
         if current_time - self._last_play_ready_check_time >= 1.0:
             self._last_play_ready_check_time = current_time
-            ready = self._web_client.is_play_ready()
+            ready = self._chess_client.is_play_ready()
 
         if not ready:
             # Timeout exceeded
@@ -268,7 +268,7 @@ class CustomizableAgent(Agent, ABC):
         if current_time - self._last_stage_change_time < 1.0:
             return
 
-        if self._web_client.is_postgame_visible():
+        if self._chess_client.is_postgame_visible():
             logger.info(
                 "Postgame visible, ending session",
                 extra={"username": self.username},
@@ -278,7 +278,7 @@ class CustomizableAgent(Agent, ABC):
             return
 
         if self._decision is None:
-            if self._web_client.is_accept_draw_visible():
+            if self._chess_client.is_accept_draw_visible():
                 self._decision = "accept_draw" if random.random() < 0.5 else "resign"
             else:
                 self._decision = "offer_draw" if random.random() < 0.5 else "resign"
@@ -286,14 +286,14 @@ class CustomizableAgent(Agent, ABC):
 
         if self._decision == "accept_draw":
             logger.info("Accepting draw", extra={"username": self.username})
-            self._web_client.accept_draw()
+            self._chess_client.accept_draw()
             self._stage = "done"
             self._last_stage_change_time = current_time
             return
 
         if self._decision == "offer_draw":
             logger.info("Offering draw", extra={"username": self.username})
-            self._web_client.offer_draw()
+            self._chess_client.offer_draw()
             self._decision = "wait_draw"
             self._draw_wait_start_time = current_time
             self._last_stage_change_time = current_time
@@ -309,14 +309,14 @@ class CustomizableAgent(Agent, ABC):
 
         if self._decision == "resign":
             logger.info("Resigning", extra={"username": self.username})
-            self._web_client.resign()
+            self._chess_client.resign()
             self._decision = "resign_confirm"
             self._last_stage_change_time = current_time
             return
 
         if self._decision == "resign_confirm":
             logger.info("Confirming resign", extra={"username": self.username})
-            self._web_client.resign_confirm()
+            self._chess_client.resign_confirm()
             self._stage = "done"
             self._last_stage_change_time = current_time
             return
@@ -334,7 +334,7 @@ class CustomizableAgent(Agent, ABC):
         return random.choices(indices, weights=values, k=1)[0]
 
     def _random_time_control_weights(self) -> dict[int, int]:
-        indices = self._web_client.time_control_indices()
+        indices = self._chess_client.time_control_indices()
         weights = {index: random.randint(0, 5) for index in indices}
         if indices and sum(weights.values()) == 0:
             weights[random.choice(indices)] = 1

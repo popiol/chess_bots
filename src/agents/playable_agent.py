@@ -49,9 +49,9 @@ class PlayableAgent(CustomizableAgent):
         )
 
     def _step_playing(self) -> None:
-        if self._web_client.is_postgame_visible():
-            result = self._web_client.get_game_result()
-            reason = self._web_client.get_game_reason()
+        if self._chess_client.is_postgame_visible():
+            result = self._chess_client.get_game_result()
+            reason = self._chess_client.get_game_reason()
 
             # Convert result to score: 1 (win), 0 (draw), -1 (loss)
             score = None
@@ -78,7 +78,7 @@ class PlayableAgent(CustomizableAgent):
 
         # Determine player color once
         if self._player_color is None:
-            self._player_color = self._web_client.get_player_color()
+            self._player_color = self._chess_client.get_player_color()
             if self._player_color:
                 logger.info(
                     "Playing as %s",
@@ -88,19 +88,19 @@ class PlayableAgent(CustomizableAgent):
 
         if self._resigned:
             logger.info("Confirming resign", extra={"username": self.username})
-            self._web_client.resign_confirm()
+            self._chess_client.resign_confirm()
             return
 
         # Get current position (skip fetch if we're already thinking about a move)
         if not self._is_thinking:
-            self._current_fen = self._web_client.get_current_fen()
+            self._current_fen = self._chess_client.get_current_fen()
 
         # If we made a move, check if it was successful
         if self._made_decisions and not self._is_thinking:
             valid = True
 
             if self._current_fen == self._fen_before_move:
-                lastmove, valid = self._web_client.get_last_move_valid()
+                lastmove, valid = self._chess_client.get_last_move_valid()
                 if lastmove is None or lastmove != "".join(self._made_decisions[-1]):
                     # Move not yet reflected on site
                     return
@@ -135,7 +135,7 @@ class PlayableAgent(CustomizableAgent):
             self._fen_before_move = None
 
         # If it's not our turn, check if we should offer draw and skip to next tick
-        if not self._web_client.is_current_user_turn():
+        if not self._chess_client.is_current_user_turn():
             if (
                 self._last_decisive is not None
                 and self._last_decisive < self._draw_threshold
@@ -148,12 +148,12 @@ class PlayableAgent(CustomizableAgent):
                     self._moves_made,
                     extra={"username": self.username},
                 )
-                self._web_client.offer_draw()
+                self._chess_client.offer_draw()
                 self._last_decisive = None
             return
 
         # It's our turn - get time remaining
-        self._time_remaining = self._web_client.get_time_remaining()
+        self._time_remaining = self._chess_client.get_time_remaining()
         if self._time_remaining:
             if (
                 self._last_calculation_time is not None
@@ -212,14 +212,14 @@ class PlayableAgent(CustomizableAgent):
                 self._resign_threshold,
                 extra={"username": self.username},
             )
-            self._web_client.resign()
+            self._chess_client.resign()
             self._resigned = True
             return
 
         # Check if opponent offered draw and we should accept based on decisive value
         if (
             decisive < self._draw_threshold
-            and self._web_client.is_accept_draw_visible()
+            and self._chess_client.is_accept_draw_visible()
         ):
             logger.info(
                 "Position decisive %.2f below threshold %.2f and draw offered, accepting draw",
@@ -227,7 +227,7 @@ class PlayableAgent(CustomizableAgent):
                 self._draw_threshold,
                 extra={"username": self.username},
             )
-            self._web_client.accept_draw()
+            self._chess_client.accept_draw()
             self._stage = "done"
             return
 
@@ -245,7 +245,7 @@ class PlayableAgent(CustomizableAgent):
         self._last_from_square = from_square
         self._last_to_square = to_square
         self._made_decisions.append((from_square, to_square))
-        self._web_client.make_move(from_square, to_square)
+        self._chess_client.make_move(from_square, to_square)
 
     def _decide_move(self, current_fen: str) -> tuple[str, str, float, float] | None:
         """Decide which move to make.

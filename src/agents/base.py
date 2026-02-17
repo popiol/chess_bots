@@ -15,13 +15,13 @@ class Agent(ABC):
         password: str,
         email: str,
         classpath: str,
-        web_client: ChessClient,
+        chess_client: ChessClient,
     ) -> None:
         self._username = username
         self._password = password
         self._email = email
         self._classpath = classpath
-        self._web_client = web_client
+        self._chess_client = chess_client
         self.session_done = False
 
     @property

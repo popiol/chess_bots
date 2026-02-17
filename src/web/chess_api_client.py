@@ -69,7 +69,6 @@ class ChessAPIClient(ChessClient):
         url = f"{self.base_url}/api/identity/auth/register"
         payload = {"username": username, "email": email, "password": password}
         r = self._session.post(url, json=payload, timeout=10)
-        logger.info("Sign-up response: %s", r.text)
         r.raise_for_status()
 
     def sign_in(self, username: str, password: str) -> None:
@@ -124,7 +123,6 @@ class ChessAPIClient(ChessClient):
             mode="rated" if rated else "casual",
             auth_mode=("account" if self.signed_in else "guest"),
         )
-        logger.info("Joining matchmaking with params: %s", params)
         url = f"{self.base_url}/api/matchmaking/join"
         r = self._session.post(url, json=params, timeout=10)
         r.raise_for_status()
@@ -272,16 +270,14 @@ class ChessAPIClient(ChessClient):
 
     # --- helpers ---
     def _game_state(self) -> dict | None:
-        # Prefer live websocket state if available
-        if self._last_state:
-            return self._last_state
-        # try to ensure websocket is connected (best-effort; do not raise)
         try:
             self._ensure_ws_connected()
         except Exception:
-            logger.debug(
+            logger.info(
                 "WebSocket not available when fetching game state; falling back to REST"
             )
+        if self._last_state:
+            return self._last_state
         if not self._game_id:
             return None
         url = f"{self.base_url}/api/games/{self._game_id}"
