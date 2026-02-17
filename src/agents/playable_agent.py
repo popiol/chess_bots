@@ -195,7 +195,9 @@ class PlayableAgent(CustomizableAgent):
             return
 
         # A pending move exists — only execute it after the thinking delay
-        if (time.time() - self._thinking_start_time) < 0.5:
+        if (time.time() - self._thinking_start_time) < min(
+            1.5, max(0, 1.0 + random.uniform(0, 0.5))
+        ):
             return
 
         # Enough thinking time elapsed — clear pending state and proceed
