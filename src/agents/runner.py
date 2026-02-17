@@ -182,8 +182,10 @@ class AgentRunner:
                     )
                     agent.session_done = True
 
-            if username in self._consecutive_failures:
-                self._consecutive_failures.pop(username, None)
+            else:
+                # Clear consecutive failure count on successful run
+                if username in self._consecutive_failures:
+                    self._consecutive_failures.pop(username, None)
 
             if agent.session_done:
                 logger.info("Ending session", extra={"username": username})
