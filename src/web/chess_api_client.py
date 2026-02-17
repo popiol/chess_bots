@@ -55,8 +55,8 @@ class ChessAPIClient(ChessClient):
             try:
                 try:
                     self._ws.close()
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.exception("Failed to close websocket", ex)
             finally:
                 self._ws = None
         if self._ws_thread is not None:
@@ -93,8 +93,8 @@ class ChessAPIClient(ChessClient):
         try:
             r = self._session.post(url, timeout=5)
             r.raise_for_status()
-        except Exception:
-            logger.exception("Failed to sign out")
+        except Exception as ex:
+            logger.exception("Failed to sign out", ex)
         self._access_token = None
         self._session.headers.pop("Authorization", None)
         self.signed_in = False
@@ -270,14 +270,16 @@ class ChessAPIClient(ChessClient):
 
     # --- helpers ---
     def _game_state(self) -> dict | None:
+        if self._last_state:
+            logger.info("last state: %s", self._last_state)
+            return self._last_state
         try:
             self._ensure_ws_connected()
-        except Exception:
+        except Exception as ex:
             logger.info(
-                "WebSocket not available when fetching game state; falling back to REST"
+                "WebSocket not available when fetching game state; falling back to REST",
+                ex,
             )
-        if self._last_state:
-            return self._last_state
         if not self._game_id:
             return None
         url = f"{self.base_url}/api/games/{self._game_id}"
@@ -285,8 +287,8 @@ class ChessAPIClient(ChessClient):
             r = self._session.get(url, timeout=5)
             r.raise_for_status()
             return r.json()
-        except Exception:
-            logger.exception("Failed to fetch game state")
+        except Exception as ex:
+            logger.exception("Failed to fetch game state", ex)
             return None
 
     def _send_ws(self, message: dict) -> None:
@@ -296,8 +298,8 @@ class ChessAPIClient(ChessClient):
             raise RuntimeError("WebSocket unavailable for game actions")
         try:
             self._ws.send(json.dumps(message))
-        except Exception:
-            logger.exception("Failed to send websocket message")
+        except Exception as ex:
+            logger.exception("Failed to send websocket message", ex)
 
     def _ensure_ws_connected(self) -> None:
         if self._ws is not None:
@@ -332,8 +334,8 @@ class ChessAPIClient(ChessClient):
                     break
                 try:
                     msg = json.loads(raw)
-                except Exception:
-                    logger.exception("Failed to parse websocket message")
+                except Exception as ex:
+                    logger.exception("Failed to parse websocket message", ex)
                     continue
                 mtype = msg.get("type")
                 data = msg.get("data")
@@ -344,16 +346,13 @@ class ChessAPIClient(ChessClient):
                     if mtype == "game_over":
                         self._draw_offered_by = None
                 elif mtype == "draw_offered":
-                    try:
-                        self._draw_offered_by = (data or {}).get("by")
-                    except Exception:
-                        self._draw_offered_by = None
+                    self._draw_offered_by = (data or {}).get("by")
                 elif mtype == "error":
                     logger.warning("WebSocket error message: %s", data)
                 # small sleep to avoid busy loop if recv returns quickly
-            except Exception:
+            except Exception as ex:
                 # connection likely closed or broken
-                logger.exception("WebSocket reader exiting")
+                logger.exception("WebSocket reader exiting", ex)
                 break
         # cleanup when reader exits
         self._ws_running = False
@@ -361,7 +360,7 @@ class ChessAPIClient(ChessClient):
             if self._ws is not None:
                 try:
                     self._ws.close()
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.exception("Failed to close websocket on reader exit", ex)
         finally:
             self._ws = None
