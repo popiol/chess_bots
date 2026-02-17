@@ -271,7 +271,6 @@ class ChessAPIClient(ChessClient):
     # --- helpers ---
     def _game_state(self) -> dict | None:
         if self._last_state:
-            logger.info("last state: %s", self._last_state)
             return self._last_state
         try:
             self._ensure_ws_connected()
