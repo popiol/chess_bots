@@ -69,6 +69,8 @@ class ChessAPIClient(ChessClient):
         url = f"{self.base_url}/api/identity/auth/register"
         payload = {"username": username, "email": email, "password": password}
         r = self._session.post(url, json=payload, timeout=10)
+        if r.status_code != 200:
+            logger.error("Failed to sign up: %s", r.text)
         r.raise_for_status()
 
     def sign_in(self, username: str, password: str) -> None:
