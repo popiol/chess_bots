@@ -11,7 +11,7 @@ from src.agents.base import Agent
 
 logger = logging.getLogger(__name__)
 
-GUEST_PROBABILITY = 0.5
+GUEST_PROBABILITY = 0.3
 
 
 class CustomizableAgent(Agent, ABC):
