@@ -79,6 +79,12 @@ class ChessAPIClient(ChessClient):
         r = self._session.post(
             url, data={"username": username, "password": password}, timeout=10
         )
+        if r.status_code != 200:
+            logger.error(
+                "Failed to sign in: %s, data=%s",
+                r.text,
+                {"username": username, "password": password},
+            )
         r.raise_for_status()
         body = r.json()
         token = body.get("access_token")
