@@ -78,7 +78,9 @@ class ChessClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def make_move(self, from_square: str, to_square: str) -> None:
+    def make_move(
+        self, from_square: str, to_square: str, promotion: str | None = None
+    ) -> None:
         raise NotImplementedError
 
     @abstractmethod

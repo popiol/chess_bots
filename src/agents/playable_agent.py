@@ -247,7 +247,35 @@ class PlayableAgent(CustomizableAgent):
         self._last_from_square = from_square
         self._last_to_square = to_square
         self._made_decisions.append((from_square, to_square))
-        self._chess_client.make_move(from_square, to_square)
+
+        # Determine promotion if this is a pawn moving to the last rank
+        promotion: str | None = None
+        piece = self._piece_at(self._current_fen or "", from_square)
+        if piece and piece.lower() == "p" and to_square[1] in ("1", "8"):
+            promotion = "q"
+
+        self._chess_client.make_move(from_square, to_square, promotion)
+
+    def _piece_at(self, fen: str, square: str) -> str | None:
+        # Extract the piece character at `square` from the FEN string, or None
+        if not fen:
+            return None
+        board_part = fen.split()[0]
+        rows = board_part.split("/")
+        file_to_index = {f: i for i, f in enumerate(FILES)}
+        file = square[0]
+        rank = int(square[1])
+        rank_idx = 8 - rank
+        row = rows[rank_idx]
+        file_idx = 0
+        for ch in row:
+            if ch.isdigit():
+                file_idx += int(ch)
+            else:
+                if file_idx == file_to_index[file]:
+                    return ch
+                file_idx += 1
+        return None
 
     def _decide_move(self, current_fen: str) -> tuple[str, str, float, float] | None:
         """Decide which move to make.

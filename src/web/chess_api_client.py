@@ -209,13 +209,15 @@ class ChessAPIClient(ChessClient):
     def accept_draw(self) -> None:
         self._send_ws({"type": "accept_draw", "data": {}})
 
-    def make_move(self, from_square: str, to_square: str) -> None:
+    def make_move(
+        self, from_square: str, to_square: str, promotion: str | None = None
+    ) -> None:
         payload = {
             "type": "move",
             "data": {
                 "from_square": from_square,
                 "to_square": to_square,
-                "promotion": None,
+                "promotion": promotion,
             },
         }
         self._send_ws(payload)

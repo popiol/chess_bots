@@ -167,7 +167,9 @@ class ChessWebClient(ChessClient):
     def accept_draw(self) -> None:
         self._click(self._selectors.game_page.accept_draw)
 
-    def make_move(self, from_square: str, to_square: str) -> None:
+    def make_move(
+        self, from_square: str, to_square: str, promotion: str | None = None
+    ) -> None:
         """Make a chess move by clicking from_square then to_square.
 
         Args:
@@ -176,6 +178,41 @@ class ChessWebClient(ChessClient):
         """
         self._click(self._selectors.square(from_square))
         self._click(self._selectors.square(to_square))
+
+        # If a promotion choice is provided, attempt to select it.
+        # Different UIs use different selectors; try some common patterns.
+        if promotion:
+            promo_map = {
+                "q": [
+                    "css=[data-testid='promotion-queen']",
+                    "css=.promotion-queen",
+                    "label=Queen",
+                ],
+                "r": [
+                    "css=[data-testid='promotion-rook']",
+                    "css=.promotion-rook",
+                    "label=Rook",
+                ],
+                "b": [
+                    "css=[data-testid='promotion-bishop']",
+                    "css=.promotion-bishop",
+                    "label=Bishop",
+                ],
+                "n": [
+                    "css=[data-testid='promotion-knight']",
+                    "css=.promotion-knight",
+                    "label=Knight",
+                ],
+            }
+            selectors = promo_map.get(promotion.lower(), [])
+            for sel in selectors:
+                try:
+                    if self._locator(sel).first.is_visible():
+                        self._click(sel)
+                        break
+                except Exception:
+                    # best-effort: if promotion UI not present, ignore
+                    continue
 
     def get_current_fen(self) -> str:
         """Get the current FEN (Forsyth-Edwards Notation) of the game position.
