@@ -110,12 +110,21 @@ class CustomizableAgent(Agent, ABC):
                     self._password,
                     extra={"username": self.username},
                 )
-                self._chess_client.sign_up(
-                    email=self._email,
-                    username=self.username,
-                    password=self._password,
-                )
-                self._auth_action = "signed_up"
+                try:
+                    self._chess_client.sign_up(
+                        email=self._email,
+                        username=self.username,
+                        password=self._password,
+                    )
+                    self._auth_action = "signed_up"
+                except Exception as ex:
+                    # Sign-up failed - assume registered and proceed to sign-in
+                    logger.warning(
+                        "Sign-up failed, assuming already registered: %s",
+                        ex,
+                        extra={"username": self.username},
+                    )
+                    self._registered = True
 
             if self._registered and self._auth_action is None:
                 if not self._chess_client.is_sign_in_available():
