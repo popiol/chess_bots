@@ -130,7 +130,7 @@ class AgentRunner:
                     min_bytes,
                     extra={"username": username},
                 )
-                if self._memory_failures >= 10:
+                if self._memory_failures >= 100:
                     raise RuntimeError(
                         f"Insufficient memory for {self._memory_failures} consecutive checks."
                     )

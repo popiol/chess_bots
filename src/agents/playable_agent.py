@@ -168,6 +168,14 @@ class PlayableAgent(CustomizableAgent):
                     11, self._expected_total_moves - self._moves_made
                 )
                 self._allocated_time = self._time_remaining / expected_moves_remaining
+                self._allocated_time = max(
+                    1.0,
+                    min(
+                        self._time_remaining - 1.0,
+                        self._allocated_time
+                        + random.gauss(0, 0.5 * self._allocated_time),
+                    ),
+                )
             self._last_calculation_time = time.time()
 
             logger.debug(
@@ -196,7 +204,7 @@ class PlayableAgent(CustomizableAgent):
 
         # A pending move exists — only execute it after the thinking delay
         if (time.time() - self._thinking_start_time) < min(
-            1.5, max(0, 1.0 + random.uniform(0, 0.5))
+            1.5, max(0.0, 1.0 + random.gauss(0, 0.5))
         ):
             return
 
