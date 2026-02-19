@@ -417,7 +417,7 @@ class NeuralNetworkAgent(TrainableAgent):
                     target_valid_opp[i, move_id, 0] = 1.0
 
             # Train alternatingly on both batches for a few iterations
-            for _ in range(10):
+            for _ in range(1):
                 if X_our is not None:
                     loss = self.model.train_on_batch(
                         X_our, [target_moves_our, target_valid_our]
