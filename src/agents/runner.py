@@ -44,7 +44,8 @@ def getsize(obj):
     types to avoid traversing interpreter internals.
     """
     if isinstance(obj, BLACKLIST):
-        raise TypeError("getsize() does not take argument of type: " + str(type(obj)))
+        # skip blacklisted types rather than raising so traversal can continue
+        return 0
     seen_ids = set()
     size = 0
     objects = [obj]
