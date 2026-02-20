@@ -4,8 +4,11 @@ import argparse
 import gc
 import logging
 import random
+import sys
 import time
+import types
 from dataclasses import dataclass
+from gc import get_referents
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Iterable
@@ -13,7 +16,6 @@ from uuid import uuid4
 
 import psutil
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from pympler import asizeof
 
 from src.agents.manager import AgentManager
 from src.db.repository import AgentRepository
@@ -22,6 +24,42 @@ from src.web.factory import APIClientFactory
 LOG_DIR = Path("logs")
 
 logger = logging.getLogger(__name__)
+
+
+# Types we don't want to traverse for deep-size calculations
+BLACKLIST = (
+    types.ModuleType,
+    types.FunctionType,
+    types.MethodType,
+    types.BuiltinFunctionType,
+    type,
+)
+
+
+def getsize(obj):
+    """sum size of object & members (deep).
+
+    Note: this is a best-effort retained-size approximation using
+    object graph traversal. It intentionally raises for blacklisted
+    types to avoid traversing interpreter internals.
+    """
+    if isinstance(obj, BLACKLIST):
+        raise TypeError("getsize() does not take argument of type: " + str(type(obj)))
+    seen_ids = set()
+    size = 0
+    objects = [obj]
+    while objects:
+        need_referents = []
+        for o in objects:
+            if not isinstance(o, BLACKLIST) and id(o) not in seen_ids:
+                seen_ids.add(id(o))
+                try:
+                    size += sys.getsizeof(o)
+                except Exception:
+                    pass
+                need_referents.append(o)
+        objects = get_referents(*need_referents)
+    return size
 
 
 class UsernameFilter(logging.Filter):
@@ -290,7 +328,7 @@ class AgentRunner:
             type_sums: dict[str, tuple[int, int]] = {}
             largest: list[tuple[int, object]] = []
             for o in objs:
-                sz = asizeof.asizeof(o)
+                sz = getsize(o)
                 t = type(o).__name__
                 cur = type_sums.get(t)
                 if cur is None:

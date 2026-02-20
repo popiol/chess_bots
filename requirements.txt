@@ -7,4 +7,3 @@ chess
 stockfish
 psutil
 websocket-client
-pympler
