@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import psutil
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from pympler import asizeof
 
 from src.agents.manager import AgentManager
 from src.db.repository import AgentRepository
@@ -170,6 +171,10 @@ class AgentRunner:
                     children_rss = None
                     top_str = "diagnostics-unavailable"
 
+                # Capture a Python-level memory breakdown to identify large objects.
+                # Use deep sizes (may be slow) to get accurate retained sizes.
+                self._log_python_memory_breakdown(username=username, deep=True)
+
                 self._memory_failures += 1
                 logger.warning(
                     "Insufficient free memory to start session (count=%d): available=%d, need >=%d bytes; python_rss=%s children_rss=%s top_processes=%s",
@@ -181,6 +186,27 @@ class AgentRunner:
                     top_str,
                     extra={"username": username},
                 )
+                # If memory failures mount up, attempt to restart the shared engine
+                if self._memory_failures >= 10:
+                    try:
+                        logger.warning(
+                            "Memory failures reached %d; restarting shared Stockfish",
+                            self._memory_failures,
+                            extra={"username": username},
+                        )
+                        logger.info(
+                            "Restarted shared Stockfish to reclaim memory",
+                            extra={"username": username},
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to restart shared Stockfish",
+                            extra={"username": username},
+                        )
+                    finally:
+                        # reset counter after attempting a restart
+                        self._memory_failures = 0
+                        return
                 if self._memory_failures >= 100:
                     raise RuntimeError(
                         f"Insufficient memory for {self._memory_failures} consecutive checks."
@@ -244,6 +270,74 @@ class AgentRunner:
 
                 # Force garbage collection and log memory usage
                 gc.collect()
+
+    def _log_python_memory_breakdown(
+        self,
+        *,
+        top_types: int = 20,
+        top_objects: int = 20,
+        username: str | None = None,
+        deep: bool = False,
+    ) -> None:
+        """Log a shallow Python memory breakdown by object type and largest individual objects.
+
+        This is an approximation (uses sys.getsizeof on reachable objects) and should
+        be used as a diagnostic to find obvious large holders (big lists, dicts, arrays).
+        """
+        try:
+            gc.collect()
+            objs = gc.get_objects()
+            type_sums: dict[str, tuple[int, int]] = {}
+            largest: list[tuple[int, object]] = []
+            for o in objs:
+                sz = asizeof.asizeof(o)
+                t = type(o).__name__
+                cur = type_sums.get(t)
+                if cur is None:
+                    type_sums[t] = (sz, 1)
+                else:
+                    type_sums[t] = (cur[0] + sz, cur[1] + 1)
+
+                if len(largest) < top_objects:
+                    largest.append((sz, o))
+                    if len(largest) == top_objects:
+                        largest.sort(reverse=True, key=lambda x: x[0])
+                else:
+                    if sz > largest[-1][0]:
+                        largest[-1] = (sz, o)
+                        largest.sort(reverse=True, key=lambda x: x[0])
+
+            type_list = sorted(
+                ((t, sums[0], sums[1]) for t, sums in type_sums.items()),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            lines = [
+                "Python object memory breakdown (shallow sizes):",
+                "Top object types by accumulated shallow size:",
+            ]
+            for t, total, count in type_list[:top_types]:
+                lines.append(f"{t}: count={count} total_bytes={total}")
+
+            lines.append("")
+            lines.append("Largest individual Python objects (shallow):")
+            for sz, o in largest[:top_objects]:
+                try:
+                    summary = repr(o)
+                except Exception:
+                    summary = f"<{type(o).__name__}?>"
+                if len(summary) > 200:
+                    summary = summary[:200] + "..."
+                lines.append(f"{sz} bytes: {type(o).__name__} {summary}")
+
+            extra = {"username": username or "-"}
+            logger.warning("\n".join(lines), extra=extra)
+        except Exception:
+            logger.exception(
+                "Error while generating python memory breakdown",
+                extra={"username": username or "-"},
+            )
 
     @staticmethod
     def _random_username() -> str:
