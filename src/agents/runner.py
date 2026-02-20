@@ -15,6 +15,7 @@ import psutil
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from src.agents.manager import AgentManager
+from src.agents.stockfish_agent import shutdown_shared_stockfish
 from src.db.repository import AgentRepository
 from src.web.factory import APIClientFactory
 
@@ -122,14 +123,47 @@ class AgentRunner:
             free_bytes = psutil.virtual_memory().available
             logger.info("Available memory: %d bytes", free_bytes)
             if free_bytes < min_bytes:
+                try:
+                    proc = psutil.Process()
+                    my_rss = proc.memory_info().rss
+                    children_rss = sum(
+                        (c.memory_info().rss for c in proc.children(recursive=True)), 0
+                    )
+                    procs = []
+                    for p in psutil.process_iter(["pid", "name", "memory_info"]):
+                        try:
+                            rss = p.info["memory_info"].rss
+                        except Exception:
+                            rss = 0
+                        procs.append((rss, p.info.get("pid"), p.info.get("name")))
+                    procs.sort(reverse=True)
+                    top5 = procs[:5]
+                    top_str = ", ".join(
+                        f"{pid}/{name}:{rss}" for rss, pid, name in top5
+                    )
+                except Exception:
+                    my_rss = None
+                    children_rss = None
+                    top_str = "diagnostics-unavailable"
+
                 self._memory_failures += 1
                 logger.warning(
-                    "Insufficient free memory to start session (count=%d): available=%d, need >=%d bytes",
+                    "Insufficient free memory to start session (count=%d): available=%d, need >=%d bytes; python_rss=%s children_rss=%s top_processes=%s",
                     self._memory_failures,
                     free_bytes,
                     min_bytes,
+                    my_rss,
+                    children_rss,
+                    top_str,
                     extra={"username": username},
                 )
+                if self._memory_failures >= 10 and self._memory_failures % 10 == 0:
+                    logger.warning(
+                        "Memory failures reached %d, restarting shared Stockfish",
+                        self._memory_failures,
+                        extra={"username": username},
+                    )
+                    shutdown_shared_stockfish()
                 if self._memory_failures >= 100:
                     raise RuntimeError(
                         f"Insufficient memory for {self._memory_failures} consecutive checks."

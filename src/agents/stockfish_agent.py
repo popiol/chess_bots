@@ -27,6 +27,35 @@ def _get_shared_stockfish() -> Stockfish:
     return _SHARED_STOCKFISH
 
 
+def shutdown_shared_stockfish() -> None:
+    """Terminate and drop the shared Stockfish instance so memory is released."""
+    global _SHARED_STOCKFISH
+    if _SHARED_STOCKFISH is None:
+        return
+    try:
+        _SHARED_STOCKFISH.send_quit_command()
+    except Exception:
+        logger.exception(
+            "Exception while calling send_quit_command on shared Stockfish"
+        )
+        try:
+            proc = _SHARED_STOCKFISH._stockfish
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        except Exception:
+            logger.exception(
+                "Exception while terminating internal Stockfish subprocess"
+            )
+    finally:
+        _SHARED_STOCKFISH = None
+
+
 class StockfishAgent(TrainableAgent):
     """Agent that queries Stockfish to produce move candidates."""
 
