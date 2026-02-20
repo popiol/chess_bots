@@ -15,7 +15,6 @@ import psutil
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from src.agents.manager import AgentManager
-from src.agents.stockfish_agent import shutdown_shared_stockfish
 from src.db.repository import AgentRepository
 from src.web.factory import APIClientFactory
 
@@ -130,17 +129,42 @@ class AgentRunner:
                         (c.memory_info().rss for c in proc.children(recursive=True)), 0
                     )
                     procs = []
-                    for p in psutil.process_iter(["pid", "name", "memory_info"]):
+                    for p in psutil.process_iter(
+                        ["pid", "name", "memory_info", "cmdline", "username"]
+                    ):
                         try:
                             rss = p.info["memory_info"].rss
                         except Exception:
                             rss = 0
-                        procs.append((rss, p.info.get("pid"), p.info.get("name")))
+                        pid = p.info.get("pid")
+                        name = p.info.get("name")
+                        cmdline = " ".join(p.info.get("cmdline") or [])
+                        user = p.info.get("username")
+                        procs.append((rss, pid, name, user, cmdline))
                     procs.sort(reverse=True)
                     top5 = procs[:5]
-                    top_str = ", ".join(
-                        f"{pid}/{name}:{rss}" for rss, pid, name in top5
-                    )
+                    top_str_parts = []
+                    for rss, pid, name, user, cmdline in top5:
+                        # truncate cmdline to avoid overly long logs
+                        cmd_short = (
+                            (cmdline[:200] + "...")
+                            if cmdline and len(cmdline) > 200
+                            else (cmdline or "")
+                        )
+                        top_str_parts.append(
+                            f"{pid}/{name}:{rss} user={user} cmd={cmd_short}"
+                        )
+                    top_str = ", ".join(top_str_parts)
+                    # additional overall memory stats
+                    try:
+                        vm = psutil.virtual_memory()
+                        swap = psutil.swap_memory()
+                        top_str = (
+                            f"vm_percent={vm.percent} swap_percent={swap.percent} | "
+                            + top_str
+                        )
+                    except Exception:
+                        pass
                 except Exception:
                     my_rss = None
                     children_rss = None
@@ -157,13 +181,6 @@ class AgentRunner:
                     top_str,
                     extra={"username": username},
                 )
-                if self._memory_failures >= 10 and self._memory_failures % 10 == 0:
-                    logger.warning(
-                        "Memory failures reached %d, restarting shared Stockfish",
-                        self._memory_failures,
-                        extra={"username": username},
-                    )
-                    shutdown_shared_stockfish()
                 if self._memory_failures >= 100:
                     raise RuntimeError(
                         f"Insufficient memory for {self._memory_failures} consecutive checks."
