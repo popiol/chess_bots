@@ -71,7 +71,7 @@ class StockfishAgent(TrainableAgent):
         legal_moves = list(board.legal_moves)
         candidates = []
 
-        eval_count = min(self.prediction_count + 1, len(legal_moves))
+        eval_count = min(self.prediction_count, len(legal_moves))
         top_uci: set[str] = set()
         self._sf.set_fen_position(fen)
         try:
