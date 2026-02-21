@@ -379,7 +379,9 @@ class ChessAPIClient(ChessClient):
                             self._draw_offered_by = None
             except Exception:
                 # connection likely closed or broken
-                logger.exception("WebSocket reader exiting")
+                logger.exception(
+                    "WebSocket reader exiting for game_id=%s", self._game_id
+                )
                 break
         # cleanup when reader exits
         self._ws_running = False
