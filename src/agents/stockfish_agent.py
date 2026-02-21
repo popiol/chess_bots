@@ -75,10 +75,13 @@ class StockfishAgent(TrainableAgent):
         eval_count = min(1, len(legal_moves))
         top_uci: set[str] = set()
         self._sf.set_fen_position(fen)
-        top = self._sf.get_top_moves(eval_count)
-        for item in top:
-            assert isinstance(item["Move"], str)
-            top_uci.add(item["Move"])
+        try:
+            top = self._sf.get_top_moves(eval_count)
+            for item in top:
+                assert isinstance(item["Move"], str)
+                top_uci.add(item["Move"])
+        except Exception:
+            logger.exception("Exception while querying Stockfish for top moves")
 
         for move in legal_moves:
             uci = move.uci()
@@ -87,8 +90,8 @@ class StockfishAgent(TrainableAgent):
                 eval_val = 1
                 decisive = random.random()
             else:
-                eval_val = 0.0
-                decisive = 0.0
+                eval_val = random.gauss(0, 0.5)
+                decisive = random.random()
 
             candidates.append(
                 {
