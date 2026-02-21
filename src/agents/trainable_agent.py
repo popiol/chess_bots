@@ -107,7 +107,7 @@ class TrainableAgent(PlayableAgent):
             Tuple of (from_square, to_square, evaluation, decisive) or None if no move chosen
         """
 
-        logger.debug(
+        logger.info(
             "Deciding move for FEN: %s", current_fen, extra={"username": self.username}
         )
 
