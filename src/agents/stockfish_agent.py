@@ -69,7 +69,7 @@ class StockfishAgent(TrainableAgent):
         legal_moves = list(board.legal_moves)
         candidates = []
 
-        eval_count = min(2, len(legal_moves))
+        eval_count = min(self.prediction_count, len(legal_moves))
         top_uci: set[str] = set()
         self._sf.set_fen_position(fen)
         try:
@@ -84,10 +84,10 @@ class StockfishAgent(TrainableAgent):
             uci = move.uci()
             if uci in top_uci:
                 # Assign random evaluation to top moves
-                eval_val = 1
+                eval_val = random.gauss(0.2, 0.2)
                 decisive = random.random()
             else:
-                eval_val = random.gauss(0, 0.1)
+                eval_val = -1
                 decisive = random.random()
 
             candidates.append(
@@ -121,8 +121,6 @@ class StockfishAgent(TrainableAgent):
             len(results),
             duration,
         )
-
-        logger.info("Best evaluations: %s", [r.evaluation for r in results])
 
         return results
 
