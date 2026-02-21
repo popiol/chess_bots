@@ -99,6 +99,8 @@ class AgentRunner:
         self._max_start_failures = 3
         # Track consecutive memory check failures
         self._memory_failures = 0
+        # Track last global snapshot time to rate-limit verbose agent snapshots
+        self._last_agent_snapshot_time: float = 0.0
 
     def main_loop(self) -> None:
         while True:
@@ -278,19 +280,22 @@ class AgentRunner:
             self._start_failures = 0
 
     def _run_active_sessions(self) -> None:
+        should_snapshot = time.time() - self._last_agent_snapshot_time >= 60
+
         for idx, (username, agent) in enumerate(
             self._manager.active_sessions_items(), start=1
         ):
-            # Log brief agent snapshot whenever we start handling it
             try:
-                logger.info(
-                    "Agent loop: idx=%d stage=%s session_done=%s moves_made=%s",
-                    idx,
-                    getattr(agent, "_stage", None),
-                    getattr(agent, "session_done", None),
-                    getattr(agent, "_moves_made", None),
-                    extra={"username": username},
-                )
+                if should_snapshot:
+                    logger.info(
+                        "Agent loop: idx=%d stage=%s session_done=%s moves_made=%s",
+                        idx,
+                        getattr(agent, "_stage", None),
+                        getattr(agent, "session_done", None),
+                        getattr(agent, "_moves_made", None),
+                        extra={"username": username},
+                    )
+                    self._last_agent_snapshot_time = time.time()
                 agent.run()
             except Exception:
                 cnt = self._consecutive_failures.get(username, 0) + 1
