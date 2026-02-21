@@ -118,20 +118,20 @@ class TrainableAgent(PlayableAgent):
             assert moves, "Predict returned no moves"
             self._analysis = AnalysisNode(fen=current_fen, predictions=moves)
             self._expansion_queue = [self._analysis]
-            logger.debug(
+            logger.info(
                 "Initialized analysis with %d predictions",
                 len(moves),
                 extra={"username": self.username},
             )
 
         # log current predictions
-        logger.debug(
+        logger.info(
             "Current predictions for FEN: %s",
             self._analysis.fen,
             extra={"username": self.username},
         )
         for move in self._analysis.predictions:
-            logger.debug(
+            logger.info(
                 "Candidate move %s->%s eval: %.2f decisive: %.2f",
                 move.from_sq,
                 move.to_sq,
@@ -171,7 +171,7 @@ class TrainableAgent(PlayableAgent):
             self._analysis = None
             self._expansion_queue = []
 
-            logger.debug(
+            logger.info(
                 "Decided move %s->%s (eval: %.2f, decisive: %.2f)",
                 from_square,
                 to_square,
@@ -189,14 +189,14 @@ class TrainableAgent(PlayableAgent):
     def _expand_analysis(self) -> None:
         """Expand the analysis tree by one node using BFS."""
 
-        logger.debug(
+        logger.info(
             "Expanding analysis tree, queue size: %d",
             len(self._expansion_queue),
             extra={"username": self.username},
         )
 
         if not self._expansion_queue:
-            logger.debug(
+            logger.info(
                 "Expansion queue empty, analysis complete",
                 extra={"username": self.username},
             )
@@ -240,7 +240,7 @@ class TrainableAgent(PlayableAgent):
             # Update parent evaluations up the tree
             self._propagate_evaluation(child_node)
 
-            logger.debug(
+            logger.info(
                 "Expanded move %s->%s, %d predictions, queue: %d",
                 from_square,
                 to_square,
@@ -249,7 +249,7 @@ class TrainableAgent(PlayableAgent):
                 extra={"username": self.username},
             )
             for pred in new_predictions:
-                logger.debug(
+                logger.info(
                     "Child node candidate move %s->%s eval: %.2f decisive: %.2f",
                     pred.from_sq,
                     pred.to_sq,
