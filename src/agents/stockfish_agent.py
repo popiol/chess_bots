@@ -73,7 +73,7 @@ class StockfishAgent(TrainableAgent):
         candidates = []
 
         # Choose up to 10 moves to evaluate with Stockfish
-        sampled = random.sample(legal_moves, k=min(0, len(legal_moves)))
+        sampled = random.sample(legal_moves, k=min(5, len(legal_moves)))
         sampled_uci = {m.uci() for m in sampled}
 
         evaluated = 0
