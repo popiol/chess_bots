@@ -214,13 +214,8 @@ class PlayableAgent(CustomizableAgent):
             logger.info("Deciding move", extra={"username": self.username})
             move = self._decide_move(self._current_fen)
             self._pending_move = move
-            return
 
-        # A pending move exists — only execute it after the thinking delay
-        if (time.time() - self._thinking_start_time) < min(
-            1.5, max(0.0, 0.5 + random.gauss(0, 0.5))
-        ):
-            logger.info("Pending move")
+        if self._pending_move is None:
             return
 
         # Enough thinking time elapsed — clear pending state and proceed
