@@ -191,6 +191,25 @@ Keep-alive ping. Server responds with `pong`.
 
 ---
 
+### 6. `status` / `get_state`
+
+Client requests the current authoritative game state without taking an action. This is useful before attempting a mutating action to avoid discovering an already-ended game.
+
+Request example:
+
+```json
+{
+  "type": "get_state",
+  "data": {}
+}
+```
+
+Client guidance:
+
+- Use `get_state`/`status` to reconcile before attempting mutating actions.
+- Treat a `game_over` response to `get_state` as authoritative — update the UI and stop attempting moves.
+
+
 ## Server -> Client Messages
 
 ### 1. `state_update`
@@ -309,6 +328,7 @@ Rules:
 
 - Errors are recoverable; connection remains open
 - Invalid token or unauthorized access closes the connection
+ 
 
 ---
 

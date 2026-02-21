@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import uuid
 from typing import Any
 
@@ -36,6 +37,10 @@ class ChessAPIClient(ChessClient):
         self._ws = None
         self._ws_thread: threading.Thread | None = None
         self._ws_running: bool = False
+        # Pinger thread to request authoritative state periodically
+        self._ws_pinger_thread: threading.Thread | None = None
+        self._last_get_state_time: float = 0.0
+        self._get_state_interval: float = 10.0
         # Live state received from websocket messages (state_update / game_over)
         self._last_state: dict | None = None
         # Track latest draw offer ("white" or "black") if any
@@ -63,6 +68,10 @@ class ChessAPIClient(ChessClient):
             # give the thread a moment to exit
             self._ws_thread.join(timeout=1.0)
             self._ws_thread = None
+        if self._ws_pinger_thread is not None:
+            # give the pinger a moment to exit
+            self._ws_pinger_thread.join(timeout=1.0)
+            self._ws_pinger_thread = None
 
     # --- auth ---
     def sign_up(self, email: str, username: str, password: str) -> None:
@@ -331,6 +340,9 @@ class ChessAPIClient(ChessClient):
         self._ws_running = True
         self._ws_thread = threading.Thread(target=self._ws_reader, daemon=True)
         self._ws_thread.start()
+        # start pinger thread to request authoritative state periodically
+        self._ws_pinger_thread = threading.Thread(target=self._ws_pinger, daemon=True)
+        self._ws_pinger_thread.start()
 
     def _ws_reader(self) -> None:
         # Read messages from websocket and update live state
@@ -348,12 +360,6 @@ class ChessAPIClient(ChessClient):
                 mtype = msg.get("type")
                 data = msg.get("data")
                 if mtype in ("state_update", "game_over"):
-                    logger.info(
-                        "Received for game_id=%s type=%s data=%s",
-                        self._game_id,
-                        mtype,
-                        data,
-                    )
                     # store authoritative live state
                     self._last_state = data or {}
                     # clear draw offers on game over
@@ -385,3 +391,23 @@ class ChessAPIClient(ChessClient):
                     logger.exception("Failed to close websocket on reader exit")
         finally:
             self._ws = None
+
+    def _ws_pinger(self) -> None:
+        # Periodically request authoritative state from server to ensure we
+        # observe postgame transitions (some servers only push state in
+        # response to an explicit `get_state` request).
+        while self._ws_running:
+            try:
+                now = time.time()
+                if now - self._last_get_state_time >= self._get_state_interval:
+                    if self._ws is not None:
+                        try:
+                            self._ws.send(json.dumps({"type": "get_state", "data": {}}))
+                            self._last_get_state_time = now
+                        except Exception:
+                            logger.exception(
+                                "Failed to send get_state via websocket pinger"
+                            )
+            except Exception:
+                logger.exception("WebSocket pinger exiting due to error")
+                break
