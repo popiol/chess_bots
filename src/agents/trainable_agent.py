@@ -144,7 +144,7 @@ class TrainableAgent(PlayableAgent):
         # If we have less than 3 seconds, return best move immediately
         if (
             self._allocated_time is None
-            or self._allocated_time < 5.0
+            or self._allocated_time < 3.0
             or not self._expansion_queue
         ):
             best_move = max(
