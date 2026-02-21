@@ -22,7 +22,7 @@ def _get_shared_stockfish() -> Stockfish:
     global _SHARED_STOCKFISH
     if _SHARED_STOCKFISH is None:
         _SHARED_STOCKFISH = Stockfish(
-            path="stockfish", parameters={"Hash": 8, "Threads": 3}
+            path="stockfish", parameters={"Hash": 8, "Threads": 1}
         )
         _SHARED_STOCKFISH.set_depth(1)
     return _SHARED_STOCKFISH
@@ -67,39 +67,51 @@ class StockfishAgent(TrainableAgent):
     def _predict(self, fen: str, our_squares: List[str]) -> List[PredictionResult]:
         assert our_squares, "Our squares must be provided"
 
-        # Use python-chess to get all legal moves
         start = time.time()
         board = chess.Board(fen)
+        legal_moves = list(board.legal_moves)
         candidates = []
 
-        for move in board.legal_moves:
+        # Choose up to 10 moves to evaluate with Stockfish
+        sampled = random.sample(legal_moves, k=min(10, len(legal_moves)))
+        sampled_uci = {m.uci() for m in sampled}
+
+        evaluated = 0
+        for move in legal_moves:
             uci = move.uci()
+            if uci in sampled_uci:
+                # Set position and make move to evaluate resulting position
+                self._sf.set_fen_position(fen)
+                self._sf.make_moves_from_current_position([uci])
 
-            # Set position and make move to evaluate resulting position
-            self._sf.set_fen_position(fen)
-            self._sf.make_moves_from_current_position([uci])
+                # Get evaluation of the position AFTER the move
+                # This evaluation is from the perspective of the side to move (the opponent)
+                eval_info = self._sf.get_evaluation()
 
-            # Get evaluation of the position AFTER the move
-            # This evaluation is from the perspective of the side to move (the opponent)
-            eval_info = self._sf.get_evaluation()
+                eval_type = eval_info.get("type")
+                eval_val_raw = eval_info.get("value")
+                # stockfish may sometimes return None in weird cases; be defensive
+                if not isinstance(eval_val_raw, int):
+                    raw_score = 0
+                else:
+                    if eval_type == "mate":
+                        raw_score = 100000 if eval_val_raw > 0 else -100000
+                    else:
+                        raw_score = eval_val_raw
 
-            eval_type = eval_info.get("type")
-            eval_val_raw = eval_info.get("value")
-            assert isinstance(eval_val_raw, int)
+                # Invert score to get value for US (the side that made the move)
+                my_raw_score = -1 * raw_score
 
-            if eval_type == "mate":
-                raw_score = 100000 if eval_val_raw > 0 else -100000
+                # Convert to -1..1 scale
+                base_eval = self._convert_stockfish_eval(my_raw_score)
+
+                eval_val = base_eval + max(0, random.gauss(0, 0.05))
+                decisive = abs(base_eval) + max(0, random.gauss(0, 0.05))
+                evaluated += 1
             else:
-                raw_score = eval_val_raw
-
-            # Invert score to get value for US (the side that made the move)
-            my_raw_score = -1 * raw_score
-
-            # Convert to -1..1 scale
-            base_eval = self._convert_stockfish_eval(my_raw_score)
-
-            eval_val = base_eval + max(0, random.gauss(0, 0.05))
-            decisive = abs(base_eval) + max(0, random.gauss(0, 0.05))
+                # Assign neutral evaluation for unevaluated moves
+                eval_val = 0.0
+                decisive = 0.0
 
             candidates.append(
                 {
