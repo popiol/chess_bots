@@ -103,10 +103,16 @@ class PlayableAgent(CustomizableAgent):
                 lastmove, valid = self._chess_client.get_last_move_valid()
                 if lastmove is None or lastmove != "".join(self._made_decisions[-1]):
                     # Move not yet reflected on site
+                    logger.info(
+                        "Move not yet reflected on site, waiting: %s -> %s",
+                        self._last_from_square,
+                        self._last_to_square,
+                        extra={"username": self.username},
+                    )
                     return
 
             if valid:
-                logger.debug(
+                logger.info(
                     "Move successful %s -> %s",
                     self._last_from_square,
                     self._last_to_square,
@@ -150,6 +156,7 @@ class PlayableAgent(CustomizableAgent):
                 )
                 self._chess_client.offer_draw()
                 self._last_decisive = None
+            logger.info("Not our turn, waiting", extra={"username": self.username})
             return
 
         # It's our turn - get time remaining
@@ -198,6 +205,7 @@ class PlayableAgent(CustomizableAgent):
 
         # If no pending move yet, decide one and return immediately (will execute later)
         if self._pending_move is None:
+            logger.info("Deciding move", extra={"username": self.username})
             move = self._decide_move(self._current_fen)
             self._pending_move = move
             return
@@ -206,6 +214,7 @@ class PlayableAgent(CustomizableAgent):
         if (time.time() - self._thinking_start_time) < min(
             1.5, max(0.0, 1.0 + random.gauss(0, 0.5))
         ):
+            logger.info("Pending move")
             return
 
         # Enough thinking time elapsed — clear pending state and proceed
@@ -245,7 +254,7 @@ class PlayableAgent(CustomizableAgent):
         self._last_decisive = decisive
 
         # Make move
-        logger.debug(
+        logger.info(
             "Attempting move %s -> %s",
             from_square,
             to_square,

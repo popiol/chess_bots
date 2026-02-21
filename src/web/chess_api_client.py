@@ -404,9 +404,6 @@ class ChessAPIClient(ChessClient):
                 if now - self._last_get_state_time >= self._get_state_interval:
                     if self._ws is not None:
                         try:
-                            logger.info(
-                                "Sending get_state to game_id=%s", self._game_id
-                            )
                             self._ws.send(json.dumps({"type": "get_state", "data": {}}))
                             self._last_get_state_time = now
                         except Exception:

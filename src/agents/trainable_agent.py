@@ -107,10 +107,6 @@ class TrainableAgent(PlayableAgent):
             Tuple of (from_square, to_square, evaluation, decisive) or None if no move chosen
         """
 
-        logger.info(
-            "Deciding move for FEN: %s", current_fen, extra={"username": self.username}
-        )
-
         # Detect and record opponent reply if we previously saved the post-move FEN
         self._detect_and_record_opponent_move(current_fen)
 
