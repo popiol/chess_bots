@@ -293,10 +293,9 @@ class AgentRunner:
                         game_id = getattr(client, "_game_id", None)
 
                     logger.info(
-                        "Agent loop: idx=%d stage=%s session_done=%s moves_made=%s game_id=%s",
+                        "idx=%d stage=%s moves_made=%s game_id=%s",
                         idx,
                         getattr(agent, "_stage", None),
-                        getattr(agent, "session_done", None),
                         getattr(agent, "_moves_made", None),
                         game_id,
                         extra={"username": username},
