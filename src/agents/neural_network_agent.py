@@ -447,10 +447,9 @@ class NeuralNetworkAgent(TrainableAgent):
                 extra={"username": self.username},
             )
 
-        except Exception as e:
+        except Exception:
             logger.error(
-                "Failed to train on game end: %s",
-                e,
+                "Failed to train on game end",
                 exc_info=True,
                 extra={"username": self.username},
             )
@@ -499,10 +498,9 @@ class NeuralNetworkAgent(TrainableAgent):
                 loss,
                 extra={"username": self.username},
             )
-        except Exception as e:
+        except Exception:
             logger.error(
-                "Failed to train on move failure: %s",
-                e,
+                "Failed to train on move failure",
                 exc_info=True,
                 extra={"username": self.username},
             )

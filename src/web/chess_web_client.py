@@ -147,6 +147,7 @@ class ChessWebClient(ChessClient):
 
             return None
         except Exception:
+            logger.exception("Error while getting game reason")
             return None
 
     def is_accept_draw_visible(self) -> bool:

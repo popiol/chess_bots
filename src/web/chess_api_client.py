@@ -284,10 +284,9 @@ class ChessAPIClient(ChessClient):
             return self._last_state
         try:
             self._ensure_ws_connected()
-        except Exception as ex:
+        except Exception:
             logger.info(
-                "WebSocket not available when fetching game state; falling back to REST",
-                ex,
+                "WebSocket not available when fetching game state; falling back to REST"
             )
         if not self._game_id:
             return None

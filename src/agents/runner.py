@@ -259,12 +259,11 @@ class AgentRunner:
             logger.info(
                 "Active sessions: %d", active_count, extra={"username": username}
             )
-        except PlaywrightTimeoutError as e:
+        except PlaywrightTimeoutError:
             self._start_failures += 1
             logger.warning(
-                "Failed to start session due to timeout (count=%d): %s",
+                "Failed to start session due to timeout (count=%d)",
                 self._start_failures,
-                str(e),
                 extra={"username": username},
             )
             if self._start_failures >= self._max_start_failures:

@@ -117,11 +117,10 @@ class CustomizableAgent(Agent, ABC):
                         password=self._password,
                     )
                     self._auth_action = "signed_up"
-                except Exception as ex:
+                except Exception:
                     # Sign-up failed - assume registered and proceed to sign-in
                     logger.warning(
-                        "Sign-up failed, assuming already registered: %s",
-                        ex,
+                        "Sign-up failed, assuming already registered",
                         extra={"username": self.username},
                     )
                     self._registered = True

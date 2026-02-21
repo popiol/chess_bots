@@ -792,8 +792,8 @@ def main() -> int:
             tester.predict_starting_position()
             return 0
 
-    except Exception as e:
-        logger.error("Error during %s: %s", args.command, e, exc_info=True)
+    except Exception:
+        logger.error("Error during %s", args.command, exc_info=True)
         return 1
 
     return 0
