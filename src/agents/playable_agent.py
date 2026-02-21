@@ -156,7 +156,6 @@ class PlayableAgent(CustomizableAgent):
                 )
                 self._chess_client.offer_draw()
                 self._last_decisive = None
-            logger.info("Not our turn, waiting", extra={"username": self.username})
             return
 
         # It's our turn - get time remaining
