@@ -467,7 +467,7 @@ class AgentRunner:
 
 def main() -> None:
     classpath_map = {
-        "NeuralNetworkAgent": "src.agents.neural_network_agent.NeuralNetworkAgent",
+        # "NeuralNetworkAgent": "src.agents.neural_network_agent.NeuralNetworkAgent",
         "StockfishAgent": "src.agents.stockfish_agent.StockfishAgent",
     }
     available_classnames = list(classpath_map.keys())
