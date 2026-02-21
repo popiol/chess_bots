@@ -170,18 +170,25 @@ class PlayableAgent(CustomizableAgent):
                 self._allocated_time = max(0.0, self._allocated_time - elapsed)
             else:
                 # First calculation on each move
-                expected_moves_remaining = max(
-                    11, self._expected_total_moves - self._moves_made
-                )
-                self._allocated_time = self._time_remaining / expected_moves_remaining
-                self._allocated_time = max(
-                    1.0,
-                    min(
-                        self._time_remaining - 1.0,
-                        self._allocated_time
-                        + random.gauss(0, 0.5 * self._allocated_time),
-                    ),
-                )
+                if self._moves_made == 0:
+                    self._allocated_time = min(
+                        5.0, max(1.0, self._time_remaining - 1.0)
+                    )
+                else:
+                    expected_moves_remaining = max(
+                        11, self._expected_total_moves - self._moves_made
+                    )
+                    self._allocated_time = (
+                        self._time_remaining / expected_moves_remaining
+                    )
+                    self._allocated_time = max(
+                        1.0,
+                        min(
+                            self._time_remaining - 1.0,
+                            self._allocated_time
+                            + random.gauss(0, 0.5 * self._allocated_time),
+                        ),
+                    )
             self._last_calculation_time = time.time()
 
             logger.info(
