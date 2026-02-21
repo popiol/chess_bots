@@ -69,7 +69,7 @@ class StockfishAgent(TrainableAgent):
         legal_moves = list(board.legal_moves)
         candidates = []
 
-        eval_count = min(1, len(legal_moves))
+        eval_count = min(2, len(legal_moves))
         top_uci: set[str] = set()
         self._sf.set_fen_position(fen)
         try:
@@ -87,7 +87,7 @@ class StockfishAgent(TrainableAgent):
                 eval_val = 1
                 decisive = random.random()
             else:
-                eval_val = random.gauss(0, 0.5)
+                eval_val = random.gauss(0, 0.1)
                 decisive = random.random()
 
             candidates.append(
