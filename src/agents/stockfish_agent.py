@@ -84,7 +84,7 @@ class StockfishAgent(TrainableAgent):
             uci = move.uci()
             if uci in top_uci:
                 # Assign random evaluation to top moves
-                eval_val = random.uniform(-1.0, 1.0)
+                eval_val = random.gauss(0.2, 0.2)
                 decisive = random.random()
             else:
                 eval_val = 0.0
