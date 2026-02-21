@@ -122,6 +122,8 @@ class StockfishAgent(TrainableAgent):
             duration,
         )
 
+        logger.info("Best evaluations: %s", [r.evaluation for r in results])
+
         return results
 
     def _convert_stockfish_eval(self, raw: int | None) -> float:
