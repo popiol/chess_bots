@@ -72,44 +72,22 @@ class StockfishAgent(TrainableAgent):
         legal_moves = list(board.legal_moves)
         candidates = []
 
-        # Choose up to 10 moves to evaluate with Stockfish
-        sampled = random.sample(legal_moves, k=min(1, len(legal_moves)))
-        sampled_uci = {m.uci() for m in sampled}
+        eval_count = min(10, len(legal_moves))
+        top_uci: set[str] = set()
+        self._sf.set_fen_position(fen)
+        top = self._sf.get_top_moves(eval_count)
+        for item in top:
+            assert isinstance(item["Move"], str)
+            top_uci.add(item["Move"])
 
-        evaluated = 0
         for move in legal_moves:
             uci = move.uci()
-            if uci in sampled_uci:
-                # Set position and make move to evaluate resulting position
-                self._sf.set_fen_position(fen)
-                self._sf.make_moves_from_current_position([uci])
-
-                # Get evaluation of the position AFTER the move
-                # This evaluation is from the perspective of the side to move (the opponent)
-                eval_info = self._sf.get_evaluation()
-
-                eval_type = eval_info.get("type")
-                eval_val_raw = eval_info.get("value")
-                # stockfish may sometimes return None in weird cases; be defensive
-                if not isinstance(eval_val_raw, int):
-                    raw_score = 0
-                else:
-                    if eval_type == "mate":
-                        raw_score = 100000 if eval_val_raw > 0 else -100000
-                    else:
-                        raw_score = eval_val_raw
-
-                # Invert score to get value for US (the side that made the move)
-                my_raw_score = -1 * raw_score
-
-                # Convert to -1..1 scale
-                base_eval = self._convert_stockfish_eval(my_raw_score)
-
-                eval_val = base_eval + max(0, random.gauss(0, 0.05))
-                decisive = abs(base_eval) + max(0, random.gauss(0, 0.05))
-                evaluated += 1
+            if uci in top_uci:
+                # Assign random evaluation to top moves
+                logger.info("Evaluating top move %s -> %s", uci[0:2], uci[2:4])
+                eval_val = random.uniform(-1.0, 1.0)
+                decisive = random.random()
             else:
-                # Assign neutral evaluation for unevaluated moves
                 eval_val = 0.0
                 decisive = 0.0
 
@@ -140,7 +118,7 @@ class StockfishAgent(TrainableAgent):
         logger.info(
             "StockfishAgent._predict: moves_considered=%d samples=%d moves_returned=%d time=%.3fs",
             len(candidates),
-            len(sampled),
+            eval_count,
             len(results),
             duration,
         )
