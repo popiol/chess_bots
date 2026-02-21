@@ -73,7 +73,7 @@ class StockfishAgent(TrainableAgent):
         candidates = []
 
         # Choose up to 10 moves to evaluate with Stockfish
-        sampled = random.sample(legal_moves, k=min(10, len(legal_moves)))
+        sampled = random.sample(legal_moves, k=min(0, len(legal_moves)))
         sampled_uci = {m.uci() for m in sampled}
 
         evaluated = 0
@@ -138,9 +138,9 @@ class StockfishAgent(TrainableAgent):
 
         duration = time.time() - start
         logger.info(
-            "StockfishAgent._predict: fen=%s moves_considered=%d moves_returned=%d time=%.3fs",
-            (fen[:64] + "...") if fen and len(fen) > 64 else fen,
+            "StockfishAgent._predict: moves_considered=%d samples=%d moves_returned=%d time=%.3fs",
             len(candidates),
+            len(sampled),
             len(results),
             duration,
         )
