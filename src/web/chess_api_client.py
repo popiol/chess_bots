@@ -352,6 +352,7 @@ class ChessAPIClient(ChessClient):
                     self._last_state = data or {}
                     # clear draw offers on game over
                     if mtype == "game_over":
+                        logger.info("Game over received in websocket reader: %s", data)
                         self._draw_offered_by = None
                 elif mtype == "draw_offered":
                     self._draw_offered_by = (data or {}).get("by")
