@@ -435,7 +435,7 @@ class TrainableAgent(PlayableAgent):
                 break
 
         if not found:
-            logger.warning(
+            logger.debug(
                 "Could not detect opponent move from recorded FEN -> current FEN",
                 extra={"username": self.username},
             )
