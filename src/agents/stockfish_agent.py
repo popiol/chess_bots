@@ -22,7 +22,7 @@ def _get_shared_stockfish() -> Stockfish:
     global _SHARED_STOCKFISH
     if _SHARED_STOCKFISH is None:
         _SHARED_STOCKFISH = Stockfish(
-            path="stockfish", parameters={"Hash": 16, "Threads": 1}
+            path="stockfish", parameters={"Hash": 6, "Threads": 1}
         )
         _SHARED_STOCKFISH.set_depth(1)
     return _SHARED_STOCKFISH
