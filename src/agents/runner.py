@@ -285,6 +285,7 @@ class AgentRunner:
         for idx, (username, agent) in enumerate(
             self._manager.active_sessions_items(), start=1
         ):
+            start = time.time()
             try:
                 if should_snapshot:
                     game_id = None
@@ -301,6 +302,7 @@ class AgentRunner:
                         extra={"username": username},
                     )
                     self._last_agent_snapshot_time = time.time()
+
                 agent.run()
             except Exception:
                 cnt = self._consecutive_failures.get(username, 0) + 1
@@ -317,11 +319,36 @@ class AgentRunner:
                         extra={"username": username},
                     )
                     agent.session_done = True
-
             else:
                 # Clear consecutive failure count on successful run
                 if username in self._consecutive_failures:
                     self._consecutive_failures.pop(username, None)
+            finally:
+                duration = time.time() - start
+                if duration > 1.0:
+                    # Report slow agent.run() including stage and time spent.
+                    try:
+                        stage = getattr(agent, "_stage", None)
+                        moves = getattr(agent, "_moves_made", None)
+                        client = getattr(agent, "_chess_client", None)
+                        game_id = (
+                            getattr(client, "_game_id", None)
+                            if client is not None
+                            else None
+                        )
+                    except Exception:
+                        stage = None
+                        moves = None
+                        game_id = None
+                    logger.warning(
+                        "Slow agent.run(): idx=%d stage=%s time=%.3fs moves_made=%s game_id=%s",
+                        idx,
+                        stage,
+                        duration,
+                        moves,
+                        game_id,
+                        extra={"username": username},
+                    )
 
             if agent.session_done:
                 logger.info("Ending session", extra={"username": username})
