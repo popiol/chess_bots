@@ -72,7 +72,7 @@ class StockfishAgent(TrainableAgent):
         legal_moves = list(board.legal_moves)
         candidates = []
 
-        eval_count = min(3, len(legal_moves))
+        eval_count = min(1, len(legal_moves))
         top_uci: set[str] = set()
         self._sf.set_fen_position(fen)
         top = self._sf.get_top_moves(eval_count)
@@ -84,7 +84,7 @@ class StockfishAgent(TrainableAgent):
             uci = move.uci()
             if uci in top_uci:
                 # Assign random evaluation to top moves
-                eval_val = random.gauss(0.2, 0.2)
+                eval_val = 1
                 decisive = random.random()
             else:
                 eval_val = 0.0
