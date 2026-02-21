@@ -55,8 +55,8 @@ class ChessAPIClient(ChessClient):
             try:
                 try:
                     self._ws.close()
-                except Exception as ex:
-                    logger.exception("Failed to close websocket", ex)
+                except Exception:
+                    logger.exception("Failed to close websocket")
             finally:
                 self._ws = None
         if self._ws_thread is not None:
@@ -101,8 +101,8 @@ class ChessAPIClient(ChessClient):
         try:
             r = self._session.post(url, timeout=5)
             r.raise_for_status()
-        except Exception as ex:
-            logger.exception("Failed to sign out", ex)
+        except Exception:
+            logger.exception("Failed to sign out")
         self._access_token = None
         self._session.headers.pop("Authorization", None)
         self.signed_in = False
@@ -296,8 +296,8 @@ class ChessAPIClient(ChessClient):
             r = self._session.get(url, timeout=5)
             r.raise_for_status()
             return r.json()
-        except Exception as ex:
-            logger.exception("Failed to fetch game state", ex)
+        except Exception:
+            logger.exception("Failed to fetch game state")
             return None
 
     def _send_ws(self, message: dict) -> None:
@@ -307,8 +307,8 @@ class ChessAPIClient(ChessClient):
             raise RuntimeError("WebSocket unavailable for game actions")
         try:
             self._ws.send(json.dumps(message))
-        except Exception as ex:
-            logger.exception("Failed to send websocket message", ex)
+        except Exception:
+            logger.exception("Failed to send websocket message")
 
     def _ensure_ws_connected(self) -> None:
         if self._ws is not None:
@@ -343,8 +343,8 @@ class ChessAPIClient(ChessClient):
                     break
                 try:
                     msg = json.loads(raw)
-                except Exception as ex:
-                    logger.exception("Failed to parse websocket message", ex)
+                except Exception:
+                    logger.exception("Failed to parse websocket message")
                     continue
                 mtype = msg.get("type")
                 data = msg.get("data")
@@ -359,9 +359,9 @@ class ChessAPIClient(ChessClient):
                 elif mtype == "error":
                     logger.warning("WebSocket error message: %s", data)
                 # small sleep to avoid busy loop if recv returns quickly
-            except Exception as ex:
+            except Exception:
                 # connection likely closed or broken
-                logger.exception("WebSocket reader exiting", ex)
+                logger.exception("WebSocket reader exiting")
                 break
         # cleanup when reader exits
         self._ws_running = False
@@ -369,7 +369,7 @@ class ChessAPIClient(ChessClient):
             if self._ws is not None:
                 try:
                     self._ws.close()
-                except Exception as ex:
-                    logger.exception("Failed to close websocket on reader exit", ex)
+                except Exception:
+                    logger.exception("Failed to close websocket on reader exit")
         finally:
             self._ws = None
