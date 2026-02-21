@@ -110,8 +110,9 @@ class TrainableAgent(PlayableAgent):
         # Detect and record opponent reply if we previously saved the post-move FEN
         self._detect_and_record_opponent_move(current_fen)
 
-        # Initialize analysis if not present
+        started_now = False
         if self._analysis is None:
+            started_now = True
             our_squares = self._extract_our_squares_from_fen(current_fen)
             assert our_squares, "No pieces found for our color"
             moves = self._predict(current_fen, our_squares)
@@ -182,7 +183,9 @@ class TrainableAgent(PlayableAgent):
 
             return (from_square, to_square, evaluation, decisive)
 
-        # We have at least 3 seconds - expand the analysis tree
+        if started_now:
+            return None
+
         self._expand_analysis()
         return None
 
