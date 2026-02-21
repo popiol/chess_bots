@@ -74,7 +74,7 @@ class UsernameFilter(logging.Filter):
 class RunnerConfig:
     create_interval_seconds: float = 60.0  # How often to try creating agents
     start_interval_seconds: float = 10.0  # How often to try starting sessions
-    max_active_sessions: int = 30
+    max_active_sessions: int = 10
 
 
 class AgentRunner:
