@@ -278,11 +278,14 @@ class AgentRunner:
             self._start_failures = 0
 
     def _run_active_sessions(self) -> None:
-        for username, agent in self._manager.active_sessions_items():
+        for idx, (username, agent) in enumerate(
+            self._manager.active_sessions_items(), start=1
+        ):
             # Log brief agent snapshot whenever we start handling it
             try:
                 logger.info(
-                    "Agent loop: stage=%s session_done=%s moves_made=%s",
+                    "Agent loop: idx=%d stage=%s session_done=%s moves_made=%s",
+                    idx,
                     getattr(agent, "_stage", None),
                     getattr(agent, "session_done", None),
                     getattr(agent, "_moves_made", None),
