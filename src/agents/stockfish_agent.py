@@ -24,7 +24,7 @@ def _get_shared_stockfish() -> Stockfish:
         _SHARED_STOCKFISH = Stockfish(
             path="stockfish", parameters={"Hash": 8, "Threads": 1}
         )
-        _SHARED_STOCKFISH.set_depth(3)
+        _SHARED_STOCKFISH.set_depth(15)
     return _SHARED_STOCKFISH
 
 
