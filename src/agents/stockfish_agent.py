@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from typing import List
 
 import chess
@@ -67,6 +68,7 @@ class StockfishAgent(TrainableAgent):
         assert our_squares, "Our squares must be provided"
 
         # Use python-chess to get all legal moves
+        start = time.time()
         board = chess.Board(fen)
         candidates = []
 
@@ -121,6 +123,15 @@ class StockfishAgent(TrainableAgent):
                     decisive=c["decisive"],
                 )
             )
+
+        duration = time.time() - start
+        logger.info(
+            "StockfishAgent._predict: fen=%s moves_considered=%d moves_returned=%d time=%.3fs",
+            (fen[:64] + "...") if fen and len(fen) > 64 else fen,
+            len(candidates),
+            len(results),
+            duration,
+        )
 
         return results
 

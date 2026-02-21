@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 import chess
@@ -216,6 +217,7 @@ class NeuralNetworkAgent(TrainableAgent):
             )
 
         assert our_squares, "our_squares cannot be empty"
+        start = time.time()
 
         # Encode fen and run the model to get move scores
         features = self._encode_fen(fen)
@@ -257,18 +259,6 @@ class NeuralNetworkAgent(TrainableAgent):
                 board_after, is_white
             )
 
-            logger.debug(
-                "Move %s->%s: NN eval=%.3f, NN dec=%.3f, Validity=%.3f, Heuristic eval=%.3f, Heuristic dec=%.3f",
-                from_sq,
-                to_sq,
-                nn_eval_val,
-                nn_dec_val,
-                validity_score,
-                heuristic_eval,
-                heuristic_dec,
-                extra={"username": self.username},
-            )
-
             # Average the neural network and heuristic evaluations
             avg_eval = 0.1 * nn_eval_val + 0.9 * heuristic_eval
             avg_dec = 0.1 * nn_dec_val + 0.9 * heuristic_dec
@@ -289,7 +279,19 @@ class NeuralNetworkAgent(TrainableAgent):
         candidates.sort(key=lambda x: x[1].evaluation, reverse=True)
 
         # Return top N predictions
-        return [c[1] for c in candidates[: self.prediction_count]]
+        results = [c[1] for c in candidates[: self.prediction_count]]
+
+        duration = time.time() - start
+        logger.info(
+            "NeuralNetworkAgent._predict: fen=%s moves_considered=%d moves_returned=%d time=%.3fs",
+            (fen[:64] + "...") if fen and len(fen) > 64 else fen,
+            len(candidates),
+            len(results),
+            duration,
+            extra={"username": self.username},
+        )
+
+        return results
 
     def _encode_fen(self, fen: str) -> np.ndarray:
         """Encode FEN string as numerical features for the neural network.
