@@ -287,12 +287,18 @@ class AgentRunner:
         ):
             try:
                 if should_snapshot:
+                    game_id = None
+                    client = getattr(agent, "_chess_client", None)
+                    if client is not None:
+                        game_id = getattr(client, "_game_id", None)
+
                     logger.info(
-                        "Agent loop: idx=%d stage=%s session_done=%s moves_made=%s",
+                        "Agent loop: idx=%d stage=%s session_done=%s moves_made=%s game_id=%s",
                         idx,
                         getattr(agent, "_stage", None),
                         getattr(agent, "session_done", None),
                         getattr(agent, "_moves_made", None),
+                        game_id,
                         extra={"username": username},
                     )
                     self._last_agent_snapshot_time = time.time()
