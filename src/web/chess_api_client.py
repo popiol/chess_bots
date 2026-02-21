@@ -348,6 +348,12 @@ class ChessAPIClient(ChessClient):
                 mtype = msg.get("type")
                 data = msg.get("data")
                 if mtype in ("state_update", "game_over"):
+                    logger.info(
+                        "Received for game_id=%s type=%s data=%s",
+                        self._game_id,
+                        mtype,
+                        data,
+                    )
                     # store authoritative live state
                     self._last_state = data or {}
                     # clear draw offers on game over
