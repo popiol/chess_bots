@@ -352,13 +352,19 @@ class ChessAPIClient(ChessClient):
                     self._last_state = data or {}
                     # clear draw offers on game over
                     if mtype == "game_over":
-                        logger.info("Game over received in websocket reader: %s", data)
                         self._draw_offered_by = None
                 elif mtype == "draw_offered":
                     self._draw_offered_by = (data or {}).get("by")
                 elif mtype == "error":
                     logger.warning("WebSocket error message: %s", data)
-                # small sleep to avoid busy loop if recv returns quickly
+                    if isinstance(data, dict) and (
+                        "result" in data
+                        or "ended_at" in data
+                        or ("game_id" in data and "fen" in data)
+                    ):
+                        self._last_state = data or {}
+                        if data.get("result") is not None:
+                            self._draw_offered_by = None
             except Exception:
                 # connection likely closed or broken
                 logger.exception("WebSocket reader exiting")
