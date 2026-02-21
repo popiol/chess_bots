@@ -106,7 +106,7 @@ class PlayableAgent(CustomizableAgent):
                     return
 
             if valid:
-                logger.info(
+                logger.debug(
                     "Move successful %s -> %s",
                     self._last_from_square,
                     self._last_to_square,
@@ -245,7 +245,7 @@ class PlayableAgent(CustomizableAgent):
         self._last_decisive = decisive
 
         # Make move
-        logger.info(
+        logger.debug(
             "Attempting move %s -> %s",
             from_square,
             to_square,

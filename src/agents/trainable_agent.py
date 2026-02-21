@@ -418,7 +418,7 @@ class TrainableAgent(PlayableAgent):
                     or last.to_sq != new_decision.to_sq
                 ):
                     self._opponent_move_history.append(new_decision)
-                    logger.info(
+                    logger.debug(
                         "Detected opponent move %s->%s",
                         from_sq,
                         to_sq,

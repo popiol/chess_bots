@@ -279,7 +279,15 @@ class AgentRunner:
 
     def _run_active_sessions(self) -> None:
         for username, agent in self._manager.active_sessions_items():
+            # Log brief agent snapshot whenever we start handling it
             try:
+                logger.info(
+                    "Agent loop: stage=%s session_done=%s moves_made=%s",
+                    getattr(agent, "_stage", None),
+                    getattr(agent, "session_done", None),
+                    getattr(agent, "_moves_made", None),
+                    extra={"username": username},
+                )
                 agent.run()
             except Exception:
                 cnt = self._consecutive_failures.get(username, 0) + 1
