@@ -106,8 +106,8 @@ class AgentManager:
     def active_sessions_items(self) -> list[tuple[str, Agent]]:
         return list(self._active_sessions.items())
 
-    def list_known_agents(self) -> list[str]:
-        return self._repo.list_agent_usernames()
+    def list_known_agents(self, classpaths: list[str] | None = None) -> list[str]:
+        return self._repo.list_agent_usernames(classpaths=classpaths)
 
     @staticmethod
     def _load_agent_class(classpath: str) -> Type[Agent]:

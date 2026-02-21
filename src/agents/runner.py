@@ -132,7 +132,7 @@ class AgentRunner:
             return
         if self._manager.active_session_count() >= self._config.max_active_sessions:
             return
-        known_agents = self._manager.list_known_agents()
+        known_agents = self._manager.list_known_agents(classpaths=self._classpaths)
         if len(known_agents) >= self._config.max_active_sessions:
             return
         self._last_create_time = current_time
@@ -150,7 +150,7 @@ class AgentRunner:
                 return
             self._last_start_time = current_time
 
-            usernames = self._manager.list_known_agents()
+            usernames = self._manager.list_known_agents(classpaths=self._classpaths)
             if not usernames:
                 return
             active_usernames = self._manager.active_session_usernames()

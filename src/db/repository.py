@@ -99,9 +99,12 @@ class AgentRepository:
                 last_session_end=agent.last_session_end,
             )
 
-    def list_agent_usernames(self) -> list[str]:
+    def list_agent_usernames(self, classpaths: list[str] | None = None) -> list[str]:
         with self._sessionmaker() as session:
-            rows = session.query(AgentMetadata.username).all()
+            query = session.query(AgentMetadata.username)
+            if classpaths:
+                query = query.filter(AgentMetadata.classpath.in_(classpaths))
+            rows = query.all()
             return [row[0] for row in rows]
 
     def update_agent_state(self, username: str, state: dict) -> None:
