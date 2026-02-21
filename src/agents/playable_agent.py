@@ -172,7 +172,7 @@ class PlayableAgent(CustomizableAgent):
                 # First calculation on each move
                 if self._moves_made == 0:
                     self._allocated_time = min(
-                        5.0, max(1.0, self._time_remaining - 1.0)
+                        2.5, max(1.0, self._time_remaining - 1.0)
                     )
                 else:
                     expected_moves_remaining = max(
