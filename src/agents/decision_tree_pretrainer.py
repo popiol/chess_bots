@@ -13,6 +13,7 @@ import lightgbm as lgb
 import numpy as np
 
 from src.agents.decision_tree_agent import DecisionTreeAgent
+from src.agents.stockfish_agent import _get_shared_stockfish
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class DecisionTreePretrainer:
         self._group_by_fen = group_by_fen
         self._train_indices: list[int] | None = None
         self._test_indices: list[int] | None = None
+        self._unique_samples: list[tuple[str, str, float, float]] | None = None
 
     # ── row parsing ──────────────────────────────────────────────────
 
@@ -118,6 +120,51 @@ class DecisionTreePretrainer:
 
         return feats.astype(np.float32), float(norm_eval), abs(float(norm_eval))
 
+    def _parse_row_meta(self, row: list[str]) -> tuple[str, str, float, float] | None:
+        """Lightweight parse returning (fen, move_uci, norm_eval, decisive) or None.
+
+        This avoids computing features and is used during scanning/aggregation.
+        """
+        if len(row) < 3:
+            return None
+
+        fen = row[0].strip()
+        raw_eval = row[1].strip()
+        raw_move = row[2].strip()
+
+        if not fen or not raw_eval or not raw_move:
+            return None
+
+        # Normalize evaluation to [-1,1]
+        if raw_eval.startswith("#"):
+            norm_eval = 1.0 if "-" not in raw_eval else -1.0
+        else:
+            try:
+                cp = float(raw_eval)
+            except ValueError:
+                return None
+            norm_eval = max(-1.0, min(1.0, cp / 1000.0))
+
+        # Parse move string (keep raw UCI or first 4 chars)
+        if len(raw_move) < 4:
+            return None
+        # Use base 4-char uci for dedup keys
+        move_uci = raw_move if len(raw_move) == 4 else raw_move[:4]
+
+        # Side-to-move centric flip
+        try:
+            board = chess.Board(fen)
+        except ValueError:
+            return None
+
+        if not board.turn:
+            norm_eval = -norm_eval
+
+        # Scale as existing code does
+        norm_eval *= 0.5
+
+        return fen, move_uci, float(norm_eval), float(abs(norm_eval))
+
     # ── index preparation ────────────────────────────────────────────
 
     def _prepare_indices(self) -> None:
@@ -125,9 +172,10 @@ class DecisionTreePretrainer:
         if not self._data_path.exists():
             raise FileNotFoundError(f"Training data not found at {self._data_path}")
 
-        logger.info("Scanning data from %s", self._data_path)
-        valid_count = 0
-        valid_fens: list[str] = []
+        logger.info("Scanning and deduplicating data from %s", self._data_path)
+        # Map (fen, move) -> list of evals for averaging
+        agg: dict[tuple[str, str], list[float]] = {}
+        order: list[tuple[str, str]] = []
         with self._data_path.open("r", encoding="utf-8") as f:
             reader = csv.reader(f)
             header = next(reader, None)
@@ -136,11 +184,29 @@ class DecisionTreePretrainer:
             rows_read = 0
             for row in reader:
                 rows_read += 1
-                if self._parse_row(row) is not None:
-                    valid_count += 1
-                    valid_fens.append(row[0].strip())
+                meta = self._parse_row_meta(row)
+                if meta is not None:
+                    fen, move_uci, norm_eval, _dec = meta
+                    key = (fen, move_uci)
+                    if key not in agg:
+                        agg[key] = [norm_eval]
+                        order.append(key)
+                    else:
+                        agg[key].append(norm_eval)
                 if rows_read >= self._read_limit:
                     break
+
+        # Build unique samples list from aggregation
+        unique: list[tuple[str, str, float, float]] = []
+        for key in order:
+            fen, move_uci = key
+            vals = agg[key]
+            avg_eval = float(np.mean(vals))
+            avg_dec = float(np.mean([abs(v) for v in vals]))
+            unique.append((fen, move_uci, avg_eval, avg_dec))
+
+        valid_count = len(unique)
+        self._unique_samples = unique
 
         if valid_count == 0:
             raise ValueError("No valid rows found in CSV")
@@ -149,15 +215,16 @@ class DecisionTreePretrainer:
         if valid_count == 0:
             indices = np.array([], dtype=int)
         else:
-            # initial indices in original (valid-row) order
+            # initial indices in original (unique-sample) order
             base_indices = list(range(valid_count))
 
+            # Build list of FENs from unique samples for grouping
+            unique_fens = [s[0] for s in self._unique_samples]
+
             if self._group_by_fen:
-                # group contiguous indices by FEN, preserving samples for the
-                # same position together. Optionally shuffle the order of
-                # positions (groups) instead of shuffling individual samples.
+                # group indices by FEN, optionally shuffle the order of groups
                 fen_to_idxs: dict[str, list[int]] = defaultdict(list)
-                for idx, fen in enumerate(valid_fens):
+                for idx, fen in enumerate(unique_fens):
                     fen_to_idxs[fen].append(idx)
 
                 groups = list(fen_to_idxs.values())
@@ -190,6 +257,24 @@ class DecisionTreePretrainer:
     ) -> Iterator[tuple[np.ndarray, float, float]]:
         """Yield (features, eval, decisive) tuples for the given row indices."""
         index_set = set(indices)
+        # If unique samples were prepared, iterate them directly
+        if self._unique_samples is not None:
+            for i, (fen, move_uci, avg_eval, avg_dec) in enumerate(
+                self._unique_samples
+            ):
+                if i in index_set:
+                    try:
+                        board = chess.Board(fen)
+                        move = chess.Move.from_uci(move_uci[:4])
+                        feats = self._agent._encode_move_features(
+                            board, move, board.turn
+                        )
+                    except Exception:
+                        continue
+                    yield feats.astype(np.float32), float(avg_eval), float(avg_dec)
+            return
+
+        # Fallback: iterate by reading the CSV (legacy behaviour)
         current_idx = 0
         with self._data_path.open("r", encoding="utf-8") as f:
             reader = csv.reader(f)
@@ -214,7 +299,31 @@ class DecisionTreePretrainer:
         evaluators can display move ordering information per position.
         """
         index_set = set(indices)
+        # If unique samples exist, iterate them directly
+        if self._unique_samples is not None:
+            for i, (fen, move_uci, avg_eval, avg_dec) in enumerate(
+                self._unique_samples
+            ):
+                if i in index_set:
+                    try:
+                        board = chess.Board(fen)
+                        move = chess.Move.from_uci(move_uci[:4])
+                        feats = self._agent._encode_move_features(
+                            board, move, board.turn
+                        )
+                    except Exception:
+                        continue
+                    yield (
+                        fen,
+                        move_uci,
+                        feats.astype(np.float32),
+                        float(avg_eval),
+                        float(avg_dec),
+                    )
+            return
+
         current_idx = 0
+
         with self._data_path.open("r", encoding="utf-8") as f:
             reader = csv.reader(f)
             next(reader, None)  # skip header
@@ -476,20 +585,18 @@ class DecisionTreePretrainer:
 
         board = chess.Board(fen)
         legal_moves = []
-        actual_legal_moves = set()
         for m in board.legal_moves:
             uci = m.uci()
             from_sq = uci[:2]
             to_sq = uci[2:4]
             legal_moves.append((from_sq, to_sq, m))
-            actual_legal_moves.add((from_sq, to_sq))
 
-        print(f"\n=== Actual Legal Moves (count: {len(actual_legal_moves)}) ===")
-        for from_sq, to_sq in sorted(actual_legal_moves):
+        print(f"\n=== Legal Moves (count: {len(legal_moves)}) ===")
+        for from_sq, to_sq, _ in sorted(legal_moves):
             print(f"{from_sq}{to_sq}")
 
         if not legal_moves:
-            print("No legal moves found for starting position.")
+            print("No legal moves found for position.")
             return
 
         # Build feature matrix for legal moves
@@ -519,6 +626,50 @@ class DecisionTreePretrainer:
             print(
                 f"{i + 1:2d}. {from_sq}{to_sq}: eval={eval_score:+.4f}, decisive={dec_score:.4f}"
             )
+
+        # Also show top engine moves from Stockfish with scaled evaluations
+        try:
+            sf = _get_shared_stockfish()
+            sf.set_fen_position(fen)
+            engine_top = sf.get_top_moves(min(10, len(legal_moves)))
+        except Exception:
+            engine_top = []
+
+        def _convert_stockfish_eval(raw_cp: int | None, mate: int | None) -> float:
+            if mate is not None:
+                return 1.0 if mate > 0 else -1.0
+            if raw_cp is None:
+                return 0.0
+            max_cp = 1000.0
+            val = (1 if raw_cp >= 0 else -1) * (
+                np.log1p(abs(raw_cp)) / np.log1p(max_cp)
+            )
+            return float(np.clip(val, -1.0, 1.0))
+
+        print("\n=== Top 10 Stockfish Moves ===")
+        if not engine_top:
+            print("Stockfish top moves not available.")
+        else:
+            for i, item in enumerate(engine_top, start=1):
+                mv = item.get("Move") or item.get("move")
+                cp_raw = item.get("Centipawn") or item.get("centipawn")
+                mate_raw = item.get("Mate") or item.get("mate")
+                # coerce to ints when possible
+                cp = None
+                mate = None
+                try:
+                    if cp_raw is not None:
+                        cp = int(cp_raw)
+                except Exception:
+                    cp = None
+                try:
+                    if mate_raw is not None:
+                        mate = int(mate_raw)
+                except Exception:
+                    mate = None
+                scaled = _convert_stockfish_eval(cp, mate)
+                raw_str = f"mate={mate}" if mate is not None else f"cp={cp}"
+                print(f"{i:2d}. {mv}: eval={scaled:+.4f}  ({raw_str})")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────
