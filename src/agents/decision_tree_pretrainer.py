@@ -4,6 +4,7 @@ import argparse
 import csv
 import logging
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import Iterator
 
@@ -29,8 +30,8 @@ class DecisionTreePretrainer:
             or mate notation (e.g. "#+2", "#-1").
     - Move: best move in UCI notation (e.g. "e2e4", "d3g6").
 
-    Features are the 24-dim heuristic vector from
-    DecisionTreeAgent._encode_move_features (12 metrics before + 12 after the move).
+    Features are the 46-dim heuristic vector from
+    DecisionTreeAgent._encode_move_features (23 metrics before + 23 after the move).
     Labels are normalized evaluation [-1, 1] and decisiveness [0, 1].
 
     Training calls lgb.train with init_model each epoch so trees are added
@@ -105,6 +106,9 @@ class DecisionTreePretrainer:
         # prediction ranking (higher is better for player to move).
         if not is_white:
             norm_eval = -norm_eval
+
+        norm_eval *= 0.5  # scale down to avoid resignations
+
         try:
             feats = self._agent._encode_move_features(board, move, is_white)
         except Exception:
@@ -171,6 +175,27 @@ class DecisionTreePretrainer:
                 if rows_read >= self._read_limit:
                     break
 
+    def _iter_samples_with_fen(
+        self, indices: list[int]
+    ) -> Iterator[tuple[str, np.ndarray, float, float]]:
+        """Yield (fen, features, eval, decisive) tuples for the given row indices."""
+        index_set = set(indices)
+        current_idx = 0
+        with self._data_path.open("r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader, None)  # skip header
+            rows_read = 0
+            for row in reader:
+                rows_read += 1
+                result = self._parse_row(row)
+                if result is not None:
+                    if current_idx in index_set:
+                        fen = row[0].strip()
+                        yield fen, result[0], result[1], result[2]
+                    current_idx += 1
+                if rows_read >= self._read_limit:
+                    break
+
     # ── training ─────────────────────────────────────────────────────
 
     def train(self, epochs: int = 1) -> None:
@@ -208,16 +233,14 @@ class DecisionTreePretrainer:
             self._agent.eval_model = lgb.train(
                 self._agent._LGB_PARAMS_EVAL,
                 ds_eval,
-                num_boost_round=100,
-                init_model=self._agent.eval_model,
+                num_boost_round=300,
             )
 
             ds_dec = lgb.Dataset(X, label=y_d_arr)
             self._agent.decisive_model = lgb.train(
                 self._agent._LGB_PARAMS_DEC,
                 ds_dec,
-                num_boost_round=100,
-                init_model=self._agent.decisive_model,
+                num_boost_round=300,
             )
 
             self._agent._save_models()
@@ -265,6 +288,78 @@ class DecisionTreePretrainer:
             "Test set evaluation — eval_mae=%.4f  dec_mae=%.4f", eval_mae, dec_mae
         )
         return {"eval_mae": eval_mae, "dec_mae": dec_mae}
+
+    def evaluate_ranking(self) -> dict[str, float]:
+        """Evaluate move ranking accuracy per position.
+
+        Groups test samples by FEN.  For each position with at least two
+        moves, computes the pairwise concordance ratio: the fraction of
+        move pairs whose relative predicted ordering matches the true
+        ordering.  Tied true evaluations are skipped.
+
+        Returns a dict with ``avg_concordance`` (mean concordance across
+        positions) and ``positions_evaluated`` (number of positions used).
+        """
+        if self._test_indices is None:
+            self._prepare_indices()
+        assert self._test_indices is not None
+
+        if self._agent.eval_model is None:
+            raise RuntimeError("Models not trained. Call train() first.")
+
+        # Collect samples grouped by FEN
+        groups: dict[str, list[tuple[np.ndarray, float]]] = defaultdict(list)
+        for fen, feats, y_e, _y_d in self._iter_samples_with_fen(self._test_indices):
+            groups[fen].append((feats, y_e))
+
+        # Keep only positions with >= 2 moves
+        multi = {k: v for k, v in groups.items() if len(v) >= 2}
+
+        if not multi:
+            logger.warning("No positions with multiple moves found in test set")
+            return {}
+
+        concordance_list: list[float] = []
+        for fen, samples in multi.items():
+            X = np.asarray([s[0] for s in samples], dtype=np.float32)
+            true_evals = np.array([s[1] for s in samples])
+            pred_evals = np.asarray(self._agent.eval_model.predict(X))
+
+            # Pairwise concordance
+            n = len(samples)
+            concordant = 0
+            total = 0
+            for i in range(n):
+                for j in range(i + 1, n):
+                    true_diff = true_evals[i] - true_evals[j]
+                    pred_diff = pred_evals[i] - pred_evals[j]
+                    if true_diff == 0:
+                        continue  # skip ties in ground truth
+                    total += 1
+                    if (true_diff > 0 and pred_diff > 0) or (
+                        true_diff < 0 and pred_diff < 0
+                    ):
+                        concordant += 1
+
+            if total > 0:
+                concordance_list.append(concordant / total)
+
+        if not concordance_list:
+            logger.warning("No valid position groups for ranking evaluation")
+            return {}
+
+        avg_concordance = float(np.mean(concordance_list))
+        positions_evaluated = len(concordance_list)
+
+        logger.info(
+            "Ranking evaluation — avg_concordance=%.4f  across %d positions",
+            avg_concordance,
+            positions_evaluated,
+        )
+        return {
+            "avg_concordance": avg_concordance,
+            "positions_evaluated": positions_evaluated,
+        }
 
     def predict_starting_position(self) -> None:
         """Predict and display move evaluations for the starting chess position.
@@ -362,6 +457,9 @@ def main() -> int:
     eval_p = subparsers.add_parser("evaluate", help="Evaluate trained models")
     eval_p.add_argument("--username", required=True, help="Agent username")
 
+    rank_p = subparsers.add_parser("ranking", help="Evaluate move ranking accuracy")
+    rank_p.add_argument("--username", required=True, help="Agent username")
+
     predict_p = subparsers.add_parser("predict", help="Predict starting position")
     predict_p.add_argument("--username", required=True, help="Agent username")
 
@@ -394,6 +492,11 @@ def main() -> int:
             logger.info("Starting evaluation…")
             results = pretrainer.evaluate()
             logger.info("Results: %s", results)
+            return 0
+        elif args.command == "ranking":
+            logger.info("Starting ranking evaluation…")
+            results = pretrainer.evaluate_ranking()
+            logger.info("Ranking results: %s", results)
             return 0
         elif args.command == "predict":
             logger.info("Predicting starting position…")

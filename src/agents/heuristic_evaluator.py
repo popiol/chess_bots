@@ -35,6 +35,17 @@ class HeuristicEvaluator:
         self.doubled_weight = 0.04
         self.isolated_weight = 0.04
         self.check_weight = 0.04
+        self.hanging_weight = 0.03
+        self.bishop_pair_weight = 0.03
+        self.rook_open_file_weight = 0.03
+        self.endgame_king_activity_weight = 0.03
+        self.bishop_activity_weight = 0.03
+        self.outpost_knight_weight = 0.03
+        self.space_advantage_weight = 0.03
+        self.backward_pawns_weight = 0.03
+        self.squares_attacked_weight = 0.03
+        self.discovered_attacks_weight = 0.03
+        self.pins_weight = 0.03
 
     def evaluate_position(
         self, board: chess.Board, is_white: bool
@@ -62,6 +73,17 @@ class HeuristicEvaluator:
         doubled_eval = self._doubled_pawns_eval(board, is_white)
         isolated_eval = self._isolated_pawns_eval(board, is_white)
         passed_eval = self._passed_pawns_eval(board, is_white)
+        hanging_eval = self._hanging_pieces_eval(board, is_white)
+        bishop_pair_eval = self._bishop_pair_eval(board, is_white)
+        rook_open_file_eval = self._rook_open_file_eval(board, is_white)
+        endgame_king_activity_eval = self._endgame_king_activity_eval(board, is_white)
+        bishop_activity_eval = self._bishop_activity_eval(board, is_white)
+        outpost_knight_eval = self._outpost_knight_eval(board, is_white)
+        space_advantage_eval = self._space_advantage_eval(board, is_white)
+        backward_pawns_eval = self._backward_pawns_eval(board, is_white)
+        squares_attacked_eval = self._squares_attacked_eval(board, is_white)
+        discovered_attacks_eval = self._discovered_attacks_eval(board, is_white)
+        pins_eval = self._pins_eval(board, is_white)
 
         # Weighted sum for overall evaluation
         eval_val = (
@@ -77,6 +99,17 @@ class HeuristicEvaluator:
             + self.doubled_weight * doubled_eval
             + self.isolated_weight * isolated_eval
             + self.passed_weight * passed_eval
+            + self.hanging_weight * hanging_eval
+            + self.bishop_pair_weight * bishop_pair_eval
+            + self.rook_open_file_weight * rook_open_file_eval
+            + self.endgame_king_activity_weight * endgame_king_activity_eval
+            + self.bishop_activity_weight * bishop_activity_eval
+            + self.outpost_knight_weight * outpost_knight_eval
+            + self.space_advantage_weight * space_advantage_eval
+            + self.backward_pawns_weight * backward_pawns_eval
+            + self.squares_attacked_weight * squares_attacked_eval
+            + self.discovered_attacks_weight * discovered_attacks_eval
+            + self.pins_weight * pins_eval
         )
         eval_val = float(np.clip(eval_val, -1.0, 1.0))
 
@@ -94,6 +127,17 @@ class HeuristicEvaluator:
             + self.doubled_weight * abs(doubled_eval)
             + self.isolated_weight * abs(isolated_eval)
             + self.passed_weight * abs(passed_eval)
+            + self.hanging_weight * abs(hanging_eval)
+            + self.bishop_pair_weight * abs(bishop_pair_eval)
+            + self.rook_open_file_weight * abs(rook_open_file_eval)
+            + self.endgame_king_activity_weight * abs(endgame_king_activity_eval)
+            + self.bishop_activity_weight * abs(bishop_activity_eval)
+            + self.outpost_knight_weight * abs(outpost_knight_eval)
+            + self.space_advantage_weight * abs(space_advantage_eval)
+            + self.backward_pawns_weight * abs(backward_pawns_eval)
+            + self.squares_attacked_weight * abs(squares_attacked_eval)
+            + self.discovered_attacks_weight * abs(discovered_attacks_eval)
+            + self.pins_weight * abs(pins_eval)
         )
         decisive = float(np.clip(decisive_ratio, 0.0, 1.0))
 
@@ -486,4 +530,451 @@ class HeuristicEvaluator:
             return 0.0
         max_passed = 8.0
         scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_passed))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _hanging_pieces_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Evaluate hanging pieces (attacked and undefended non-king pieces).
+
+        Returns agent-perspective value in [-1,1]: positive if opponent has
+        more hanging material than agent.
+        """
+        white_hanging = 0.0
+        black_hanging = 0.0
+
+        for sq, piece in board_after.piece_map().items():
+            if piece.piece_type == chess.KING:
+                continue
+
+            attackers = board_after.attackers(not piece.color, sq)
+            defenders = board_after.attackers(piece.color, sq)
+            if attackers and not defenders:
+                val = float(PIECE_VALUES.get(piece.piece_type, 0))
+                if piece.color == chess.WHITE:
+                    white_hanging += val
+                else:
+                    black_hanging += val
+
+        our_hanging = white_hanging if is_white else black_hanging
+        opp_hanging = black_hanging if is_white else white_hanging
+
+        diff = opp_hanging - our_hanging
+        if diff == 0:
+            return 0.0
+        max_hanging = 20.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_hanging))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _bishop_pair_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Reward bishop pair advantage.
+
+        Returns in [-1,1], positive if our side has bishop pair and opponent
+        does not, negative in the reverse case.
+        """
+        white_bishops = len(board_after.pieces(chess.BISHOP, chess.WHITE))
+        black_bishops = len(board_after.pieces(chess.BISHOP, chess.BLACK))
+
+        our_pair = 1.0 if ((white_bishops if is_white else black_bishops) >= 2) else 0.0
+        opp_pair = 1.0 if ((black_bishops if is_white else white_bishops) >= 2) else 0.0
+        return float(np.clip(our_pair - opp_pair, -1.0, 1.0))
+
+    def _rook_open_file_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Reward rooks on open and semi-open files.
+
+        Open file: no pawns on file (+1.0)
+        Semi-open file: no friendly pawn but at least one enemy pawn (+0.5)
+        """
+
+        def side_rook_score(color: bool) -> float:
+            score = 0.0
+            rooks = board_after.pieces(chess.ROOK, color)
+            for sq in rooks:
+                f = chess.square_file(sq)
+                has_our_pawn = False
+                has_opp_pawn = False
+                for r in range(8):
+                    p = board_after.piece_at(chess.square(f, r))
+                    if p is None or p.piece_type != chess.PAWN:
+                        continue
+                    if p.color == color:
+                        has_our_pawn = True
+                    else:
+                        has_opp_pawn = True
+                if not has_our_pawn and not has_opp_pawn:
+                    score += 1.0
+                elif not has_our_pawn and has_opp_pawn:
+                    score += 0.5
+            return score
+
+        white_score = side_rook_score(chess.WHITE)
+        black_score = side_rook_score(chess.BLACK)
+        our = white_score if is_white else black_score
+        opp = black_score if is_white else white_score
+
+        # Max practical absolute difference is around 2.0
+        return float(np.clip((our - opp) / 2.0, -1.0, 1.0))
+
+    def _endgame_king_activity_eval(
+        self, board_after: chess.Board, is_white: bool
+    ) -> float:
+        """Reward active king in endgames; neutral outside endgame.
+
+        Endgame is detected by total non-pawn material (excluding kings)
+        being sufficiently low.
+        """
+
+        def non_pawn_material(color: bool) -> int:
+            total = 0
+            for piece_type in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
+                total += PIECE_VALUES[piece_type] * len(
+                    board_after.pieces(piece_type, color)
+                )
+            return total
+
+        total_non_pawn = non_pawn_material(chess.WHITE) + non_pawn_material(chess.BLACK)
+        if total_non_pawn > 24:
+            return 0.0
+
+        centers = (chess.D4, chess.E4, chess.D5, chess.E5)
+
+        def king_activity(color: bool) -> float:
+            sq = board_after.king(color)
+            if sq is None:
+                return -1.0
+            d = min(chess.square_distance(sq, c) for c in centers)
+            # distance 0 -> 1.0, distance 7 -> 0.0
+            return float(np.clip(1.0 - (d / 7.0), 0.0, 1.0))
+
+        white_act = king_activity(chess.WHITE)
+        black_act = king_activity(chess.BLACK)
+        our = white_act if is_white else black_act
+        opp = black_act if is_white else white_act
+        return float(np.clip(our - opp, -1.0, 1.0))
+
+    def _bishop_activity_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Evaluate bishop activity: squares attacked, weighted toward center/extended center.
+
+        Returns agent-perspective normalized value in [-1,1].
+        """
+        extended_center = {
+            chess.C3,
+            chess.D3,
+            chess.E3,
+            chess.F3,
+            chess.C4,
+            chess.D4,
+            chess.E4,
+            chess.F4,
+            chess.C5,
+            chess.D5,
+            chess.E5,
+            chess.F5,
+            chess.C6,
+            chess.D6,
+            chess.E6,
+            chess.F6,
+        }
+
+        def side_bishop_activity(color: bool) -> float:
+            score = 0.0
+            for sq in board_after.pieces(chess.BISHOP, color):
+                attacks = board_after.attacks(sq)
+                for target in attacks:
+                    score += 2.0 if target in extended_center else 1.0
+            return score
+
+        white_score = side_bishop_activity(chess.WHITE)
+        black_score = side_bishop_activity(chess.BLACK)
+        our = white_score if is_white else black_score
+        opp = black_score if is_white else white_score
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        max_activity = 30.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_activity))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _outpost_knight_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Evaluate outpost knights: knights on ranks 4-6 supported by a friendly pawn
+        and not attackable by an enemy pawn.
+
+        Returns agent-perspective normalized value in [-1,1].
+        """
+
+        def count_outposts(color: bool) -> int:
+            count = 0
+            opp_color = not color
+            forward = 1 if color == chess.WHITE else -1
+            good_ranks = (
+                range(3, 6) if color == chess.WHITE else range(2, 5)
+            )  # ranks 4-6 (0-indexed 3-5)
+            for sq in board_after.pieces(chess.KNIGHT, color):
+                rank = chess.square_rank(sq)
+                if rank not in good_ranks:
+                    continue
+                file = chess.square_file(sq)
+                # Check if supported by friendly pawn
+                supported = False
+                for df in (-1, 1):
+                    f = file + df
+                    r = rank - forward
+                    if 0 <= f <= 7 and 0 <= r <= 7:
+                        p = board_after.piece_at(chess.square(f, r))
+                        if p and p.piece_type == chess.PAWN and p.color == color:
+                            supported = True
+                            break
+                if not supported:
+                    continue
+                # Check no enemy pawn can attack this square
+                can_be_attacked = False
+                for df in (-1, 1):
+                    f = file + df
+                    if f < 0 or f > 7:
+                        continue
+                    # Check enemy pawns on adjacent files that could advance to attack
+                    for r in (
+                        range(rank + forward, 8)
+                        if forward == 1
+                        else range(rank + forward, -1, -1)
+                    ):
+                        if r < 0 or r > 7:
+                            break
+                        p = board_after.piece_at(chess.square(f, r))
+                        if p and p.piece_type == chess.PAWN and p.color == opp_color:
+                            can_be_attacked = True
+                            break
+                if not can_be_attacked:
+                    count += 1
+            return count
+
+        white_outposts = count_outposts(chess.WHITE)
+        black_outposts = count_outposts(chess.BLACK)
+        our = white_outposts if is_white else black_outposts
+        opp = black_outposts if is_white else white_outposts
+        diff = our - opp
+        return float(np.clip(diff / 2.0, -1.0, 1.0))
+
+    def _space_advantage_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Evaluate space advantage: count squares controlled in opponent's half.
+
+        Returns agent-perspective normalized value in [-1,1].
+        """
+
+        def controlled_in_opp_half(color: bool) -> int:
+            count = 0
+            # Opponent's half: ranks 5-8 for white (indices 4-7), ranks 1-4 for black (indices 0-3)
+            opp_ranks = range(4, 8) if color == chess.WHITE else range(0, 4)
+            for sq in chess.SQUARES:
+                if chess.square_rank(sq) not in opp_ranks:
+                    continue
+                if board_after.is_attacked_by(color, sq):
+                    count += 1
+            return count
+
+        white_space = controlled_in_opp_half(chess.WHITE)
+        black_space = controlled_in_opp_half(chess.BLACK)
+        our = white_space if is_white else black_space
+        opp = black_space if is_white else white_space
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        max_space = 20.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_space))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _backward_pawns_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Penalize backward pawns: pawns that cannot safely advance because the
+        stop square is controlled by an enemy pawn and no friendly pawn on an
+        adjacent file can support the advance.
+
+        Returns agent-perspective normalized value in [-1,1]: positive if
+        opponent has more backward pawns.
+        """
+
+        def count_backward(color: bool) -> int:
+            count = 0
+            opp_color = not color
+            forward = 1 if color == chess.WHITE else -1
+            pawn_files = [0] * 8
+            for sq in board_after.pieces(chess.PAWN, color):
+                pawn_files[chess.square_file(sq)] = 1
+
+            for sq in board_after.pieces(chess.PAWN, color):
+                rank = chess.square_rank(sq)
+                file = chess.square_file(sq)
+                stop_rank = rank + forward
+                if stop_rank < 0 or stop_rank > 7:
+                    continue
+                stop_sq = chess.square(file, stop_rank)
+                # Check if stop square is controlled by enemy pawn
+                if not board_after.is_attacked_by(opp_color, stop_sq):
+                    continue
+                    # Check no friendly pawn on adjacent files at same or behind rank
+                    has_support = False
+                    for df in (-1, 1):
+                        f = file + df
+                        if f < 0 or f > 7:
+                            continue
+                        # Check friendly pawns on adjacent file at same rank or behind
+                        check_ranks = (
+                            range(rank, -1, -1)
+                            if color == chess.WHITE
+                            else range(rank, 8)
+                        )
+                        for r in check_ranks:
+                            p = board_after.piece_at(chess.square(f, r))
+                            if p and p.piece_type == chess.PAWN and p.color == color:
+                                has_support = True
+                                break
+                        if has_support:
+                            break
+                    if not has_support:
+                        count += 1
+            return count
+
+        white_backward = count_backward(chess.WHITE)
+        black_backward = count_backward(chess.BLACK)
+        our = white_backward if is_white else black_backward
+        opp = black_backward if is_white else white_backward
+        diff = opp - our
+        if diff == 0:
+            return 0.0
+        max_backward = 4.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_backward))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _squares_attacked_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Count unique squares attacked by each side (excluding king squares).
+
+        Returns agent-perspective normalized value in [-1,1]: positive if
+        our side attacks more squares than opponent.
+        """
+        white_attacked = 0
+        black_attacked = 0
+        for sq in chess.SQUARES:
+            if board_after.is_attacked_by(chess.WHITE, sq):
+                white_attacked += 1
+            if board_after.is_attacked_by(chess.BLACK, sq):
+                black_attacked += 1
+
+        our = white_attacked if is_white else black_attacked
+        opp = black_attacked if is_white else white_attacked
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        max_diff = 30.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_diff))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _discovered_attacks_eval(
+        self, board_after: chess.Board, is_white: bool
+    ) -> float:
+        """Evaluate discovered attack potential.
+
+        A discovered attack exists when a sliding piece (bishop, rook, queen)
+        is blocked by a single friendly piece, and moving that blocker would
+        reveal an attack on a higher-value enemy piece.
+
+        Returns agent-perspective normalized value in [-1,1].
+        """
+        _BISHOP_DIRS = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+        _ROOK_DIRS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+
+        def _ray_dirs(piece_type: int) -> list:
+            if piece_type == chess.BISHOP:
+                return _BISHOP_DIRS
+            if piece_type == chess.ROOK:
+                return _ROOK_DIRS
+            return _BISHOP_DIRS + _ROOK_DIRS  # queen
+
+        def count_discovered(color: bool) -> float:
+            score = 0.0
+            opp = not color
+            for sq in (
+                board_after.pieces(chess.BISHOP, color)
+                | board_after.pieces(chess.ROOK, color)
+                | board_after.pieces(chess.QUEEN, color)
+            ):
+                piece = board_after.piece_at(sq)
+                if piece is None:
+                    continue
+                for df, dr in _ray_dirs(piece.piece_type):
+                    f = chess.square_file(sq) + df
+                    r = chess.square_rank(sq) + dr
+                    blocker = None
+                    # Walk along the ray
+                    while 0 <= f <= 7 and 0 <= r <= 7:
+                        target_sq = chess.square(f, r)
+                        occupant = board_after.piece_at(target_sq)
+                        if occupant is not None:
+                            if blocker is None:
+                                # First piece on the ray
+                                if occupant.color == color:
+                                    blocker = occupant
+                                else:
+                                    break  # enemy piece directly visible, not discovered
+                            else:
+                                # Second piece on the ray behind blocker
+                                if occupant.color == opp:
+                                    target_val = PIECE_VALUES.get(
+                                        occupant.piece_type, 0
+                                    )
+                                    slider_val = PIECE_VALUES.get(piece.piece_type, 0)
+                                    if target_val > slider_val:
+                                        score += float(target_val - slider_val)
+                                break
+                        f += df
+                        r += dr
+            return score
+
+        white_disc = count_discovered(chess.WHITE)
+        black_disc = count_discovered(chess.BLACK)
+        our = white_disc if is_white else black_disc
+        opp = black_disc if is_white else white_disc
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        max_disc = 15.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_disc))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _pins_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Evaluate pins: count pinned pieces weighted by value.
+
+        A piece is pinned if it is between a friendly king and an enemy
+        sliding attacker along a line.
+
+        Returns agent-perspective normalized value in [-1,1]: positive if
+        opponent has more pinned material.
+        """
+
+        def pinned_value(color: bool) -> float:
+            """Sum of piece values for all pinned pieces of the given color."""
+            king_sq = board_after.king(color)
+            if king_sq is None:
+                return 0.0
+            total = 0.0
+            # python-chess pin() returns the pin mask for a square;
+            # a piece is pinned if its pin mask is not BB_ALL (i.e. it's restricted).
+            for sq in (
+                board_after.pieces(chess.PAWN, color)
+                | board_after.pieces(chess.KNIGHT, color)
+                | board_after.pieces(chess.BISHOP, color)
+                | board_after.pieces(chess.ROOK, color)
+                | board_after.pieces(chess.QUEEN, color)
+            ):
+                if board_after.is_pinned(color, sq):
+                    piece = board_after.piece_at(sq)
+                    if piece is not None:
+                        total += float(PIECE_VALUES.get(piece.piece_type, 0))
+            return total
+
+        white_pinned = pinned_value(chess.WHITE)
+        black_pinned = pinned_value(chess.BLACK)
+        our_pinned = white_pinned if is_white else black_pinned
+        opp_pinned = black_pinned if is_white else white_pinned
+        diff = opp_pinned - our_pinned
+        if diff == 0:
+            return 0.0
+        max_pin = 15.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_pin))
         return float(np.clip(scaled, -1.0, 1.0))

@@ -93,7 +93,7 @@ class DecisionTreeAgent(TrainableAgent):
     # ── encoding ─────────────────────────────────────────────────────
 
     def _extract_metrics(self, board: chess.Board, is_white: bool) -> np.ndarray:
-        """Extract the 12 heuristic metrics for a position as a flat array."""
+        """Extract the 23 heuristic metrics for a position as a flat array."""
         h = self.heuristic
         material = h._material_eval(board, is_white)
         mobility = h._mobility_eval(board, is_white)
@@ -106,6 +106,17 @@ class DecisionTreeAgent(TrainableAgent):
         doubled = h._doubled_pawns_eval(board, is_white)
         isolated = h._isolated_pawns_eval(board, is_white)
         passed = h._passed_pawns_eval(board, is_white)
+        hanging = h._hanging_pieces_eval(board, is_white)
+        bishop_pair = h._bishop_pair_eval(board, is_white)
+        rook_open_file = h._rook_open_file_eval(board, is_white)
+        endgame_king_activity = h._endgame_king_activity_eval(board, is_white)
+        bishop_activity = h._bishop_activity_eval(board, is_white)
+        outpost_knight = h._outpost_knight_eval(board, is_white)
+        space_advantage = h._space_advantage_eval(board, is_white)
+        backward_pawns = h._backward_pawns_eval(board, is_white)
+        squares_attacked = h._squares_attacked_eval(board, is_white)
+        discovered_attacks = h._discovered_attacks_eval(board, is_white)
+        pins = h._pins_eval(board, is_white)
         return np.array(
             [
                 material,
@@ -120,6 +131,17 @@ class DecisionTreeAgent(TrainableAgent):
                 doubled,
                 isolated,
                 passed,
+                hanging,
+                bishop_pair,
+                rook_open_file,
+                endgame_king_activity,
+                bishop_activity,
+                outpost_knight,
+                space_advantage,
+                backward_pawns,
+                squares_attacked,
+                discovered_attacks,
+                pins,
             ],
             dtype=np.float32,
         )
@@ -127,10 +149,10 @@ class DecisionTreeAgent(TrainableAgent):
     def _encode_move_features(
         self, board_before: chess.Board, move: chess.Move, is_white: bool
     ) -> np.ndarray:
-        """Encode a (position, move) pair as a 24-dim feature vector.
+        """Encode a (position, move) pair as a 46-dim feature vector.
 
-        12 heuristic metrics for the position before the move, plus
-        12 heuristic metrics for the position after the move.
+        23 heuristic metrics for the position before the move, plus
+        23 heuristic metrics for the position after the move.
         The tree model can learn both absolute values and deltas.
         """
         before = self._extract_metrics(board_before, is_white)
@@ -187,12 +209,10 @@ class DecisionTreeAgent(TrainableAgent):
 
         results.sort(key=lambda r: r.evaluation, reverse=True)
 
-        duration = time.time() - start
         logger.info(
-            "DecisionTreeAgent._predict: moves=%d returned=%d time=%.3fs",
+            "DecisionTreeAgent._predict: moves=%d time=%.3fs",
             len(results),
-            min(len(results), self.prediction_count),
-            duration,
+            time.time() - start,
             extra={"username": self.username},
         )
         return results[: self.prediction_count]
@@ -200,18 +220,26 @@ class DecisionTreeAgent(TrainableAgent):
     # ── training ─────────────────────────────────────────────────────
 
     _LGB_PARAMS_EVAL = {
-        "objective": "regression",
-        "metric": "mse",
-        "num_leaves": 31,
-        "learning_rate": 0.1,
+        "objective": "regression_l1",
+        "metric": "l1",
+        "num_leaves": 63,
+        "learning_rate": 0.05,
+        "min_data_in_leaf": 20,
+        "feature_fraction": 0.9,
+        "bagging_fraction": 0.9,
+        "bagging_freq": 1,
         "verbose": -1,
     }
 
     _LGB_PARAMS_DEC = {
-        "objective": "regression",
-        "metric": "mse",
-        "num_leaves": 31,
-        "learning_rate": 0.1,
+        "objective": "regression_l1",
+        "metric": "l1",
+        "num_leaves": 63,
+        "learning_rate": 0.05,
+        "min_data_in_leaf": 20,
+        "feature_fraction": 0.9,
+        "bagging_fraction": 0.9,
+        "bagging_freq": 1,
         "verbose": -1,
     }
 
@@ -247,7 +275,9 @@ class DecisionTreeAgent(TrainableAgent):
             move = chess.Move.from_uci(d.from_sq + d.to_sq)
             is_white = board.turn
             X_rows.append(self._encode_move_features(board, move, is_white))
-            y_eval.append(float(score))
+            y_eval.append(
+                float(score) * 0.5
+            )  # scale down eval target to avoid unnecessary resignation
             y_dec.append(float(abs(score)))
 
         # Opponent moves (if tracked)
@@ -256,7 +286,7 @@ class DecisionTreeAgent(TrainableAgent):
             move = chess.Move.from_uci(d.from_sq + d.to_sq)
             is_white = board.turn
             X_rows.append(self._encode_move_features(board, move, is_white))
-            y_eval.append(-float(score))
+            y_eval.append(-float(score) * 0.5)
             y_dec.append(float(abs(score)))
 
         if not X_rows:
