@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from typing import List
 
 import chess
@@ -35,6 +36,9 @@ class HeuristicAgent(TrainableAgent):
             b2.push(move)
 
             eval_val, decisive = self.evaluator.evaluate_position(b2, is_white)
+
+            eval_val += random.gauss(0, 0.01)
+            decisive += random.gauss(0, 0.01)
 
             uci = move.uci()
             from_sq = uci[0:2]

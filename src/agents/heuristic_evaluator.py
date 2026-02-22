@@ -23,10 +23,11 @@ class HeuristicEvaluator:
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
         # Separate weights for profitable attack gains (our side and opponent)
-        self.material_weight = 0.2
-        self.opp_attack_weight = 0.4
+        self.material_weight = 0.25
+        self.opp_attack_weight = 0.35
         self.our_attack_weight = 0.04
         self.mobility_weight = 0.04
+        self.safe_mobility_weight = 0.04
         self.king_weight = 0.04
         self.castling_weight = 0.04
         self.center_weight = 0.04
@@ -64,6 +65,7 @@ class HeuristicEvaluator:
         # Calculate all individual metrics
         material_eval = self._material_eval(board, is_white)
         mobility_eval = self._mobility_eval(board, is_white)
+        safe_mobility_eval = self._safe_mobility_eval(board, is_white)
         king_eval = self._king_safety_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
@@ -89,6 +91,7 @@ class HeuristicEvaluator:
         eval_val = (
             self.material_weight * material_eval
             + self.mobility_weight * mobility_eval
+            + self.safe_mobility_weight * safe_mobility_eval
             + self.king_weight * king_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
@@ -117,6 +120,7 @@ class HeuristicEvaluator:
         decisive_ratio = (
             self.material_weight * abs(material_eval)
             + self.mobility_weight * abs(mobility_eval)
+            + self.safe_mobility_weight * abs(safe_mobility_eval)
             + self.king_weight * abs(king_eval)
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
@@ -189,6 +193,44 @@ class HeuristicEvaluator:
             opp_moves = white_moves
 
         return float(np.clip((our_moves - opp_moves) / 50.0, -1.0, 1.0))
+
+    def _safe_mobility_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Count legal moves that result in the moved piece not being attacked.
+
+        For each legal move available to a side, simulate the move and check
+        whether the piece that ended up on the destination square is attacked
+        by the opponent. Returns the normalized difference (our - opp)
+        clipped to [-1,1], using a similar scale to mobility.
+        """
+
+        def safe_moves_for(color: bool) -> int:
+            b = board_after.copy()
+            b.turn = color
+            safe = 0
+            for mv in b.legal_moves:
+                b2 = b.copy()
+                try:
+                    b2.push(mv)
+                except Exception:
+                    continue
+                dest = mv.to_square
+                piece = b2.piece_at(dest)
+                if piece is None:
+                    continue
+                if piece.color != color:
+                    continue
+                if not b2.is_attacked_by(not color, dest):
+                    safe += 1
+            return safe
+
+        white_safe = safe_moves_for(chess.WHITE)
+        black_safe = safe_moves_for(chess.BLACK)
+        our = white_safe if is_white else black_safe
+        opp = black_safe if is_white else white_safe
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        return float(np.clip((diff) / 50.0, -1.0, 1.0))
 
     def _castling_bonus(self, board_after: chess.Board, is_white: bool) -> float:
         """Return a small positive bonus if the side to move is castled.
