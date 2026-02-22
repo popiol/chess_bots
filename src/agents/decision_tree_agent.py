@@ -45,8 +45,9 @@ class DecisionTreeAgent(TrainableAgent):
         self._load_models()
 
     def _load_models(self) -> None:
-        if self.model_file.exists():
-            try:
+        # Try user-specific model first, then fall back to shared base model.
+        try:
+            if self.model_file.exists():
                 with self.model_file.open("rb") as f:
                     data = pickle.load(f)
                 self.eval_model = data.get("eval")
@@ -56,16 +57,33 @@ class DecisionTreeAgent(TrainableAgent):
                     self.model_file,
                     extra={"username": self.username},
                 )
-            except Exception:
-                logger.exception(
-                    "Failed to load LightGBM models; starting fresh",
-                    extra={"username": self.username},
-                )
-                self.eval_model = None
-                self.decisive_model = None
-        else:
-            self.eval_model = None
-            self.decisive_model = None
+                return
+        except Exception:
+            logger.exception(
+                "Failed to load user LightGBM model; trying base model",
+                extra={"username": self.username},
+            )
+
+        try:
+            base_file = self.model_dir / "base.lgbm"
+            with base_file.open("rb") as f:
+                data = pickle.load(f)
+            self.eval_model = data.get("eval")
+            self.decisive_model = data.get("dec")
+            logger.info(
+                "Loaded base LightGBM models from %s",
+                base_file,
+                extra={"username": self.username},
+            )
+            return
+        except Exception:
+            logger.exception(
+                "Failed to load base LightGBM model; starting fresh",
+                extra={"username": self.username},
+            )
+
+        self.eval_model = None
+        self.decisive_model = None
 
     def _save_models(self) -> None:
         self.model_dir.mkdir(parents=True, exist_ok=True)

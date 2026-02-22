@@ -100,6 +100,11 @@ class DecisionTreePretrainer:
             return None
 
         is_white = board.turn
+        # Convert label from absolute (white-centric) to side-to-move-centric.
+        # This keeps target semantics consistent with feature extraction and
+        # prediction ranking (higher is better for player to move).
+        if not is_white:
+            norm_eval = -norm_eval
         try:
             feats = self._agent._encode_move_features(board, move, is_white)
         except Exception:
@@ -270,7 +275,7 @@ class DecisionTreePretrainer:
         # Ensure models are loaded
         self._agent._load_models()
 
-        if self._agent.eval_model is None:
+        if self._agent.eval_model is None or self._agent.decisive_model is None:
             raise RuntimeError(
                 "Models are not initialized. Load or train models first."
             )
@@ -308,11 +313,7 @@ class DecisionTreePretrainer:
         X = np.asarray(X_list, dtype=np.float32)
 
         pred_e = np.asarray(self._agent.eval_model.predict(X))
-        pred_d = (
-            np.asarray(self._agent.decisive_model.predict(X))
-            if self._agent.decisive_model is not None
-            else np.zeros(len(X), dtype=np.float32)
-        )
+        pred_d = np.asarray(self._agent.decisive_model.predict(X))
 
         # Report specific moves of interest
         for mv in ("d2d4", "e2e4"):
