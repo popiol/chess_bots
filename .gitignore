@@ -4,6 +4,7 @@ models/*
 !models/base_s.keras
 !models/base_m.keras
 !models/base_l.keras
+!models/base.lgbm
 activate/
 deactivate/
 
