@@ -51,4 +51,9 @@ class HeuristicAgent(TrainableAgent):
 
         # Sort best moves first (higher eval better for agent)
         results.sort(key=lambda r: r.evaluation, reverse=True)
+        logger.info(
+            "Max eval: %.3f Min eval: %.3f",
+            results[0].evaluation,
+            results[-1].evaluation,
+        )
         return results[: self.prediction_count]
