@@ -47,6 +47,7 @@ class DecisionTreePretrainer:
         random_seed: int = 42,
         max_samples: int = 500_000,
         read_limit: int = 100_000,
+        group_by_fen: bool = True,
     ) -> None:
         self._agent = agent
         self._data_path = Path(data_path)
@@ -55,6 +56,7 @@ class DecisionTreePretrainer:
         self._random_seed = random_seed
         self._max_samples = max_samples
         self._read_limit = read_limit
+        self._group_by_fen = group_by_fen
         self._train_indices: list[int] | None = None
         self._test_indices: list[int] | None = None
 
@@ -125,6 +127,7 @@ class DecisionTreePretrainer:
 
         logger.info("Scanning data from %s", self._data_path)
         valid_count = 0
+        valid_fens: list[str] = []
         with self._data_path.open("r", encoding="utf-8") as f:
             reader = csv.reader(f)
             header = next(reader, None)
@@ -135,18 +138,45 @@ class DecisionTreePretrainer:
                 rows_read += 1
                 if self._parse_row(row) is not None:
                     valid_count += 1
+                    valid_fens.append(row[0].strip())
                 if rows_read >= self._read_limit:
                     break
 
         if valid_count == 0:
             raise ValueError("No valid rows found in CSV")
 
-        indices = np.arange(valid_count)
-        if self._shuffle:
-            rng = np.random.default_rng(self._random_seed)
-            rng.shuffle(indices)
+        indices: np.ndarray
+        if valid_count == 0:
+            indices = np.array([], dtype=int)
+        else:
+            # initial indices in original (valid-row) order
+            base_indices = list(range(valid_count))
 
-        if self._max_samples and self._max_samples < valid_count:
+            if self._group_by_fen:
+                # group contiguous indices by FEN, preserving samples for the
+                # same position together. Optionally shuffle the order of
+                # positions (groups) instead of shuffling individual samples.
+                fen_to_idxs: dict[str, list[int]] = defaultdict(list)
+                for idx, fen in enumerate(valid_fens):
+                    fen_to_idxs[fen].append(idx)
+
+                groups = list(fen_to_idxs.values())
+                if self._shuffle:
+                    rng = np.random.default_rng(self._random_seed)
+                    rng.shuffle(groups)
+
+                flattened: list[int] = []
+                for g in groups:
+                    flattened.extend(g)
+
+                indices = np.asarray(flattened, dtype=int)
+            else:
+                indices = np.asarray(base_indices, dtype=int)
+                if self._shuffle:
+                    rng = np.random.default_rng(self._random_seed)
+                    rng.shuffle(indices)
+
+        if self._max_samples and self._max_samples < len(indices):
             indices = indices[: self._max_samples]
 
         split_idx = int(len(indices) * (1.0 - self._test_split))
@@ -177,8 +207,12 @@ class DecisionTreePretrainer:
 
     def _iter_samples_with_fen(
         self, indices: list[int]
-    ) -> Iterator[tuple[str, np.ndarray, float, float]]:
-        """Yield (fen, features, eval, decisive) tuples for the given row indices."""
+    ) -> Iterator[tuple[str, str, np.ndarray, float, float]]:
+        """Yield (fen, move_uci, features, eval, decisive) tuples for the given row indices.
+
+        This keeps the original CSV move string alongside parsed features so
+        evaluators can display move ordering information per position.
+        """
         index_set = set(indices)
         current_idx = 0
         with self._data_path.open("r", encoding="utf-8") as f:
@@ -191,7 +225,8 @@ class DecisionTreePretrainer:
                 if result is not None:
                     if current_idx in index_set:
                         fen = row[0].strip()
-                        yield fen, result[0], result[1], result[2]
+                        move_uci = row[2].strip()
+                        yield fen, move_uci, result[0], result[1], result[2]
                     current_idx += 1
                 if rows_read >= self._read_limit:
                     break
@@ -307,10 +342,12 @@ class DecisionTreePretrainer:
         if self._agent.eval_model is None:
             raise RuntimeError("Models not trained. Call train() first.")
 
-        # Collect samples grouped by FEN
-        groups: dict[str, list[tuple[np.ndarray, float]]] = defaultdict(list)
-        for fen, feats, y_e, _y_d in self._iter_samples_with_fen(self._test_indices):
-            groups[fen].append((feats, y_e))
+        # Collect samples grouped by FEN, keeping original move strings
+        groups: dict[str, list[tuple[str, np.ndarray, float]]] = defaultdict(list)
+        for fen, move_uci, feats, y_e, _y_d in self._iter_samples_with_fen(
+            self._test_indices
+        ):
+            groups[fen].append((move_uci, feats, y_e))
 
         # Keep only positions with >= 2 moves
         multi = {k: v for k, v in groups.items() if len(v) >= 2}
@@ -319,10 +356,14 @@ class DecisionTreePretrainer:
             logger.warning("No positions with multiple moves found in test set")
             return {}
 
-        concordance_list: list[float] = []
+        concordant_counts: list[int] = []
+        total_pairs_list: list[int] = []
+        per_position_concordance: dict[str, float] = {}
+        per_position_data: dict[str, dict] = {}
         for fen, samples in multi.items():
-            X = np.asarray([s[0] for s in samples], dtype=np.float32)
-            true_evals = np.array([s[1] for s in samples])
+            move_strs = [s[0] for s in samples]
+            X = np.asarray([s[1] for s in samples], dtype=np.float32)
+            true_evals = np.array([s[2] for s in samples])
             pred_evals = np.asarray(self._agent.eval_model.predict(X))
 
             # Pairwise concordance
@@ -342,30 +383,86 @@ class DecisionTreePretrainer:
                         concordant += 1
 
             if total > 0:
-                concordance_list.append(concordant / total)
+                ratio = concordant / total
+                concordant_counts.append(concordant)
+                total_pairs_list.append(total)
+                per_position_concordance[fen] = ratio
+                per_position_data[fen] = {
+                    "moves": move_strs,
+                    "true": true_evals,
+                    "pred": pred_evals,
+                }
 
-        if not concordance_list:
+        if not per_position_concordance:
             logger.warning("No valid position groups for ranking evaluation")
             return {}
 
-        avg_concordance = float(np.mean(concordance_list))
-        positions_evaluated = len(concordance_list)
+        # Weighted average concordance: sum(concordant pairs) / sum(total pairs)
+        total_concordant = sum(concordant_counts)
+        total_pairs = sum(total_pairs_list)
+        avg_concordance = (
+            float(total_concordant / total_pairs) if total_pairs > 0 else 0.0
+        )
+        positions_evaluated = len(per_position_concordance)
+
+        # Average number of samples per multi-move position
+        avg_group_size = float(np.mean([len(v) for v in multi.values()]))
 
         logger.info(
-            "Ranking evaluation — avg_concordance=%.4f  across %d positions",
+            "Ranking evaluation — avg_concordance=%.4f  across %d positions  avg_group_size=%.2f",
             avg_concordance,
             positions_evaluated,
+            avg_group_size,
         )
+
+        # Find and display the worst concordance group (lowest ratio) among
+        # positions with at least 9 samples. Fall back to the global worst
+        # if no position meets the minimum size.
+        candidate_fens = [
+            f for f, s in multi.items() if len(s) >= 9 and f in per_position_concordance
+        ]
+        if candidate_fens:
+            worst_fen = min(candidate_fens, key=lambda f: per_position_concordance[f])
+        else:
+            # use items() to satisfy static type checkers
+            worst_fen = min(per_position_concordance.items(), key=lambda kv: kv[1])[0]
+        worst_ratio = per_position_concordance[worst_fen]
+        worst_data = per_position_data[worst_fen]
+
+        logger.info(
+            "Worst-position concordance=%.4f  FEN=%s",
+            worst_ratio,
+            worst_fen,
+        )
+
+        # Display correct (true) ordering and predicted ordering for the worst group
+        true_order_idx = list(np.argsort(-worst_data["true"]))
+        pred_order_idx = list(np.argsort(-worst_data["pred"]))
+
+        logger.info("Correct order (best -> worst):")
+        for rank, idx in enumerate(true_order_idx, start=1):
+            mv = worst_data["moves"][idx]
+            tval = worst_data["true"][idx]
+            pval = float(worst_data["pred"][idx])
+            logger.info("  %2d. %s  true=%.4f  pred=%.4f", rank, mv, tval, pval)
+
+        logger.info("Predicted order (best -> worst):")
+        for rank, idx in enumerate(pred_order_idx, start=1):
+            mv = worst_data["moves"][idx]
+            tval = worst_data["true"][idx]
+            pval = float(worst_data["pred"][idx])
+            logger.info("  %2d. %s  true=%.4f  pred=%.4f", rank, mv, tval, pval)
         return {
             "avg_concordance": avg_concordance,
             "positions_evaluated": positions_evaluated,
+            "avg_group_size": avg_group_size,
         }
 
-    def predict_starting_position(self) -> None:
-        """Predict and display move evaluations for the starting chess position.
+    def predict_position(self, fen: str) -> None:
+        """Predict and display move evaluations for the given FEN.
 
         This does not attempt to predict move validity — it evaluates the
-        legal moves from the starting FEN using the trained LightGBM models.
+        legal moves from `fen` using the trained LightGBM models.
         """
         # Ensure models are loaded
         self._agent._load_models()
@@ -375,10 +472,9 @@ class DecisionTreePretrainer:
                 "Models are not initialized. Load or train models first."
             )
 
-        starting_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-        logger.info("Predicting for starting position: %s", starting_fen)
+        logger.info("Predicting for position: %s", fen)
 
-        board = chess.Board(starting_fen)
+        board = chess.Board(fen)
         legal_moves = []
         actual_legal_moves = set()
         for m in board.legal_moves:
@@ -409,23 +505,6 @@ class DecisionTreePretrainer:
 
         pred_e = np.asarray(self._agent.eval_model.predict(X))
         pred_d = np.asarray(self._agent.decisive_model.predict(X))
-
-        # Report specific moves of interest
-        for mv in ("d2d4", "e2e4"):
-            from_sq = mv[:2]
-            to_sq = mv[2:4]
-            found = False
-            for i, (f, t, _) in enumerate(legal_moves):
-                if f == from_sq and t == to_sq:
-                    print(
-                        f"\nModel prediction for {mv}: eval={float(pred_e[i]):+.4f}, decisive={float(pred_d[i]):.4f}"
-                    )
-                    found = True
-                    break
-            if not found:
-                print(
-                    f"\nModel prediction for {mv}: not available (illegal or not present)"
-                )
 
         # Top N moves by evaluation
         model_list = []
@@ -462,6 +541,12 @@ def main() -> int:
 
     predict_p = subparsers.add_parser("predict", help="Predict starting position")
     predict_p.add_argument("--username", required=True, help="Agent username")
+    predict_p.add_argument(
+        "--fen",
+        required=False,
+        default="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        help="FEN string for the position to predict (default: starting position)",
+    )
 
     args = parser.parse_args()
 
@@ -499,8 +584,8 @@ def main() -> int:
             logger.info("Ranking results: %s", results)
             return 0
         elif args.command == "predict":
-            logger.info("Predicting starting position…")
-            pretrainer.predict_starting_position()
+            logger.info("Predicting position…")
+            pretrainer.predict_position(args.fen)
             return 0
     except Exception:
         logger.error("Error during %s", args.command, exc_info=True)

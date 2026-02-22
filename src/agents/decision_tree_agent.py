@@ -301,7 +301,7 @@ class DecisionTreeAgent(TrainableAgent):
             self.eval_model = lgb.train(
                 self._LGB_PARAMS_EVAL,
                 ds_eval,
-                num_boost_round=20,
+                num_boost_round=1,
                 init_model=self.eval_model,
             )
 
@@ -309,7 +309,7 @@ class DecisionTreeAgent(TrainableAgent):
             self.decisive_model = lgb.train(
                 self._LGB_PARAMS_DEC,
                 ds_dec,
-                num_boost_round=20,
+                num_boost_round=1,
                 init_model=self.decisive_model,
             )
 
