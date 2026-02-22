@@ -23,8 +23,8 @@ class HeuristicEvaluator:
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
         # Separate weights for profitable attack gains (our side and opponent)
-        self.material_weight = 0.1
-        self.opp_attack_weight = 0.5
+        self.material_weight = 0.2
+        self.opp_attack_weight = 0.4
         self.our_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.king_weight = 0.04
