@@ -47,7 +47,7 @@ class DecisionTreePretrainer:
         shuffle: bool = True,
         random_seed: int = 42,
         max_samples: int = 500_000,
-        read_limit: int = 100_000,
+        read_limit: int = 500_000,
         group_by_fen: bool = True,
     ) -> None:
         self._agent = agent
