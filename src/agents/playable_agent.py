@@ -179,7 +179,7 @@ class PlayableAgent(CustomizableAgent):
                         11, self._expected_total_moves - self._moves_made
                     )
                     self._allocated_time = (
-                        self._time_remaining / expected_moves_remaining
+                        self._time_remaining / expected_moves_remaining - 1
                     )
                     self._allocated_time = max(
                         1.0,

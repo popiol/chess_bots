@@ -23,8 +23,9 @@ class HeuristicEvaluator:
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
         # Separate weights for profitable attack gains (our side and opponent)
-        self.material_weight = 0.25
-        self.opp_attack_weight = 0.35
+        self.opp_attack_weight = 0.2
+        self.material_weight = 0.2
+        self.piece_exposed_weight = 0.2
         self.our_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
@@ -41,6 +42,7 @@ class HeuristicEvaluator:
         self.rook_open_file_weight = 0.03
         self.endgame_king_activity_weight = 0.03
         self.bishop_activity_weight = 0.03
+        self.knight_fork_weight = 0.03
         self.outpost_knight_weight = 0.03
         self.space_advantage_weight = 0.03
         self.backward_pawns_weight = 0.03
@@ -66,6 +68,7 @@ class HeuristicEvaluator:
         material_eval = self._material_eval(board, is_white)
         mobility_eval = self._mobility_eval(board, is_white)
         safe_mobility_eval = self._safe_mobility_eval(board, is_white)
+        piece_exposed_eval = self._piece_exposed_eval(board, is_white)
         king_eval = self._king_safety_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
@@ -80,6 +83,7 @@ class HeuristicEvaluator:
         rook_open_file_eval = self._rook_open_file_eval(board, is_white)
         endgame_king_activity_eval = self._endgame_king_activity_eval(board, is_white)
         bishop_activity_eval = self._bishop_activity_eval(board, is_white)
+        knight_forks_eval = self._knight_forks_eval(board, is_white)
         outpost_knight_eval = self._outpost_knight_eval(board, is_white)
         space_advantage_eval = self._space_advantage_eval(board, is_white)
         backward_pawns_eval = self._backward_pawns_eval(board, is_white)
@@ -92,6 +96,7 @@ class HeuristicEvaluator:
             self.material_weight * material_eval
             + self.mobility_weight * mobility_eval
             + self.safe_mobility_weight * safe_mobility_eval
+            + self.piece_exposed_weight * piece_exposed_eval
             + self.king_weight * king_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
@@ -107,6 +112,7 @@ class HeuristicEvaluator:
             + self.rook_open_file_weight * rook_open_file_eval
             + self.endgame_king_activity_weight * endgame_king_activity_eval
             + self.bishop_activity_weight * bishop_activity_eval
+            + self.knight_fork_weight * knight_forks_eval
             + self.outpost_knight_weight * outpost_knight_eval
             + self.space_advantage_weight * space_advantage_eval
             + self.backward_pawns_weight * backward_pawns_eval
@@ -121,6 +127,7 @@ class HeuristicEvaluator:
             self.material_weight * abs(material_eval)
             + self.mobility_weight * abs(mobility_eval)
             + self.safe_mobility_weight * abs(safe_mobility_eval)
+            + self.piece_exposed_weight * abs(piece_exposed_eval)
             + self.king_weight * abs(king_eval)
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
@@ -136,6 +143,7 @@ class HeuristicEvaluator:
             + self.rook_open_file_weight * abs(rook_open_file_eval)
             + self.endgame_king_activity_weight * abs(endgame_king_activity_eval)
             + self.bishop_activity_weight * abs(bishop_activity_eval)
+            + self.knight_fork_weight * abs(knight_forks_eval)
             + self.outpost_knight_weight * abs(outpost_knight_eval)
             + self.space_advantage_weight * abs(space_advantage_eval)
             + self.backward_pawns_weight * abs(backward_pawns_eval)
@@ -231,6 +239,111 @@ class HeuristicEvaluator:
         if diff == 0:
             return 0.0
         return float(np.clip((diff) / 50.0, -1.0, 1.0))
+
+    def _knight_forks_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Evaluate knight forks: sum value of top-two attacked opponent pieces per knight.
+
+        For each knight of a side, if it attacks two or more opponent pieces,
+        add the sum of the top two piece values attacked. Return a normalized
+        difference (our - opp) in [-1,1].
+        """
+
+        def forks_for(color: bool) -> float:
+            total = 0.0
+            for sq in board_after.pieces(chess.KNIGHT, color):
+                attacked = list(board_after.attacks(sq))
+                target_vals = []
+                for t in attacked:
+                    p = board_after.piece_at(t)
+                    if p is None:
+                        continue
+                    if p.color == color:
+                        continue
+                    # mark king as None so we can assign it the strongest value later
+                    if p.piece_type == chess.KING:
+                        target_vals.append(None)
+                    else:
+                        target_vals.append(PIECE_VALUES.get(p.piece_type, 0))
+                if not target_vals:
+                    continue
+                # If any king placeholders present, set them to the strongest attacked value
+                if any(v is None for v in target_vals):
+                    non_king_vals = [v for v in target_vals if v is not None]
+                    max_val = (
+                        max(non_king_vals)
+                        if non_king_vals
+                        else PIECE_VALUES.get(chess.QUEEN, 9)
+                    )
+                    total += max_val
+                elif len(target_vals) >= 2:
+                    target_vals.sort(reverse=True)
+                    total += target_vals[1]
+                total -= PIECE_VALUES[chess.KNIGHT]
+            return total
+
+        white_score = forks_for(chess.WHITE)
+        black_score = forks_for(chess.BLACK)
+        our = white_score if is_white else black_score
+        opp = black_score if is_white else white_score
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        max_fork = 9.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_fork))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _piece_exposed_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Detect whether pieces can be taken (hanging or favorable trade).
+
+        For every piece on the board, consider whether opponent attackers exist
+        and whether the attackers are at least as 'cheap' as the cheapest
+        defender (or there are no defenders). If so, count the potential loss
+        in material terms. The metric returns (opponent_exposed_loss - our_exposed_loss)
+        normalized to [-1,1] (positive is good for the evaluator).
+        """
+
+        def exposed_points(color: bool) -> int:
+            opp = not color
+            loss = 0
+            # Iterate over all pieces of the given color
+            for sq, piece in board_after.piece_map().items():
+                if piece.color != color:
+                    continue
+                attackers = list(board_after.attackers(opp, sq))
+                if not attackers:
+                    continue
+                defenders = list(board_after.attackers(color, sq))
+                if not defenders:
+                    loss += PIECE_VALUES.get(piece.piece_type, 0)
+                    continue
+                # compare smallest attacker value vs smallest defender value
+                attacker_vals = []
+                for a in attackers:
+                    pa = board_after.piece_at(a)
+                    attacker_vals.append(
+                        PIECE_VALUES.get(pa.piece_type, 0) if pa is not None else 0
+                    )
+                defender_vals = []
+                for d in defenders:
+                    pd = board_after.piece_at(d)
+                    defender_vals.append(
+                        PIECE_VALUES.get(pd.piece_type, 0) if pd is not None else 0
+                    )
+                if not attacker_vals or not defender_vals:
+                    continue
+                if min(attacker_vals) <= min(defender_vals):
+                    loss += min(defender_vals) - min(attacker_vals)
+            return loss
+
+        white_loss = exposed_points(chess.WHITE)
+        black_loss = exposed_points(chess.BLACK)
+        our_loss = white_loss if is_white else black_loss
+        opp_loss = black_loss if is_white else white_loss
+        diff = opp_loss - our_loss  # Opponent having exposed pieces is good for us
+        if diff == 0:
+            return 0.0
+        # Normalize by queen value (9) to keep metric in similar scale
+        return float(np.clip(diff / 9.0, -1.0, 1.0))
 
     def _castling_bonus(self, board_after: chess.Board, is_white: bool) -> float:
         """Return a small positive bonus if the side to move is castled.
