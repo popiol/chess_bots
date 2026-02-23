@@ -27,6 +27,9 @@ class HeuristicTester:
         out["center_control"] = self.evaluator._center_control_eval(board, is_white)
         out["mate_against_us"] = self.evaluator._mate_in_one_eval(board, is_white)
         out["position_mate"] = self.evaluator._position_mate_eval(board, is_white)
+        out["attack_value_diff"] = self.evaluator._attack_value_diff_eval(
+            board, is_white
+        )
         our_att, opp_att = self.evaluator._profitable_attack_eval(board, is_white)
         out["our_profitable_attack"] = our_att
         out["opp_profitable_attack"] = opp_att

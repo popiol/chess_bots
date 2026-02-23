@@ -27,8 +27,9 @@ class HeuristicEvaluator:
 
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
-        self.material_weight = 0.4
-        self.our_attack_weight = 0.5
+        self.material_weight = 0.5
+        self.our_attack_weight = 0.4
+        self.attack_value_diff_weight = 0.2
         self.opp_attack_weight = 0.04
         self.mate_in_one_weight = 0.8
         self.position_mate_weight = 1.0
@@ -183,7 +184,7 @@ class HeuristicEvaluator:
         center_eval = self._center_control_eval(board, is_white)
         mate_in_one = self._mate_in_one_eval(board, is_white)
         position_mate = self._position_mate_eval(board, is_white)
-        our_attack, _ = self._profitable_attack_eval(board, is_white, fast=True)
+        attack_value_diff_eval = self._attack_value_diff_eval(board, is_white)
 
         eval_val = (
             self.material_weight * material_eval * 0.5
@@ -193,7 +194,7 @@ class HeuristicEvaluator:
             + self.center_weight * center_eval
             + self.mate_in_one_weight * mate_in_one
             + self.position_mate_weight * position_mate
-            + self.our_attack_weight * our_attack
+            + self.attack_value_diff_weight * attack_value_diff_eval
         )
         eval_val = float(np.clip(eval_val, -1.0, 1.0))
 
@@ -206,7 +207,7 @@ class HeuristicEvaluator:
             + self.center_weight * abs(center_eval)
             + self.mate_in_one_weight * abs(mate_in_one)
             + self.position_mate_weight * abs(position_mate)
-            + self.our_attack_weight * abs(our_attack)
+            + self.attack_value_diff_weight * abs(attack_value_diff_eval)
         )
         decisive = float(np.clip(decisive_ratio, 0.0, 1.0))
 
@@ -238,6 +239,55 @@ class HeuristicEvaluator:
         if diff == 0:
             return 0.0
         scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_material))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _attack_value_diff_eval(
+        self, board_after: chess.Board, is_white: bool
+    ) -> float:
+        """Sum positive differences (attacked - attacker) for attacks by each side.
+
+        For every attack where an attacking piece targets an enemy piece of
+        strictly higher value, add (attacked_value - attacker_value) to the
+        attacker's side total. Return normalized (our - opp) in [-1,1].
+        """
+        white_total = 0.0
+        black_total = 0.0
+
+        for sq, target in board_after.piece_map().items():
+            target_val = PIECE_VALUES.get(target.piece_type, 0)
+            # attackers of the square
+
+            # white attacking a black piece on sq
+            if target.color == chess.BLACK:
+                attackers_white = list(board_after.attackers(chess.WHITE, sq))
+                for a in attackers_white:
+                    pa = board_after.piece_at(a)
+                    if pa is None:
+                        continue
+                    attacker_val = PIECE_VALUES.get(pa.piece_type, 0)
+                    diff = target_val - attacker_val
+                    if diff > 0:
+                        white_total += diff
+
+            # black attacking a white piece on sq
+            if target.color == chess.WHITE:
+                attackers_black = list(board_after.attackers(chess.BLACK, sq))
+                for a in attackers_black:
+                    pa = board_after.piece_at(a)
+                    if pa is None:
+                        continue
+                    attacker_val = PIECE_VALUES.get(pa.piece_type, 0)
+                    diff = target_val - attacker_val
+                    if diff > 0:
+                        black_total += diff
+
+        our = white_total if is_white else black_total
+        opp = black_total if is_white else white_total
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        max_diff = 39.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_diff))
         return float(np.clip(scaled, -1.0, 1.0))
 
     def _mobility_eval(self, board_after: chess.Board, is_white: bool) -> float:
