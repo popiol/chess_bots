@@ -28,14 +28,14 @@ class HeuristicEvaluator:
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
         # Separate weights for profitable attack gains (our side and opponent)
-        self.our_attack_weight = 0.4
         self.material_weight = 0.8
-        self.opp_piece_exposed_weight = 0.4
+        self.our_attack_weight = 0.3
+        self.opp_piece_exposed_weight = 0.2
+        self.opp_attack_weight = 0.04
         self.our_piece_exposed_weight = 0.04
         self.mate_in_one_weight = 0.8
         self.position_mate_weight = 1.0
         self.pawn_promotion_weight = 0.03
-        self.opp_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
         self.king_weight = 0.04
@@ -463,16 +463,24 @@ class HeuristicEvaluator:
 
         Detects castling by checking king square (g1/c1 for white, g8/c8 for black).
         """
-        # Detect castling by king square presence on castled squares (g1/c1 for white, g8/c8 for black)
+        # Detect castling by king square presence on castled squares.
+        # King-side (g1/g8) counts as 1.0, queen-side (c1/c8) counts as 0.5, else -1.0
         wking = board_after.king(chess.WHITE)
         bking = board_after.king(chess.BLACK)
 
-        white_castled = wking in (chess.G1, chess.C1)
-        black_castled = bking in (chess.G8, chess.C8)
+        if wking == chess.G1:
+            white_score = 1.0
+        elif wking == chess.C1:
+            white_score = 0.5
+        else:
+            white_score = 0.0
 
-        # Map castled True -> 1, False -> -1
-        white_score = 1.0 if white_castled else -1.0
-        black_score = 1.0 if black_castled else -1.0
+        if bking == chess.G8:
+            black_score = 1.0
+        elif bking == chess.C8:
+            black_score = 0.5
+        else:
+            black_score = 0.0
 
         our = white_score if is_white else black_score
         opp = black_score if is_white else white_score
@@ -595,14 +603,15 @@ class HeuristicEvaluator:
                 ]
             )
 
-            k = min(len(attackers), len(defenders))
+            attackers_lost = min(len(attackers), len(defenders))
+            defenders_lost = min(len(attackers), len(defenders) + 1)
 
             # Cost for attacker: Sum of k weakest attackers
-            attacker_loss = sum(attacker_values[:k])
+            attacker_loss = sum(attacker_values[:attackers_lost])
 
             # Cost for defender: Target + Sum of k-1 weakest defenders
             target_val = PIECE_VALUES.get(piece.piece_type, 0)
-            defender_loss = target_val + sum(defender_values[: (k - 1)])
+            defender_loss = target_val + sum(defender_values[: defenders_lost - 1])
 
             net_gain = defender_loss - attacker_loss
             if net_gain > 0:
