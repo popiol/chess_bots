@@ -62,8 +62,8 @@ class HeuristicAgent(TrainableAgent):
             )
             eval_val = -eval_val
 
-            eval_val += random.gauss(0, 0.01)
-            decisive += random.gauss(0, 0.01)
+            eval_val += random.gauss(0, 0.02)
+            decisive += random.gauss(0, 0.02)
 
             uci = move.uci()
             from_sq = uci[0:2]
