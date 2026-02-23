@@ -25,16 +25,20 @@ class HeuristicAgent(TrainableAgent):
 
     def _predict(self, fen: str, our_squares: list[str]) -> List[PredictionResult]:
         board = chess.Board(fen)
-        is_white = board.turn  # True if agent to move is white, False if black
+        mover_is_white = board.turn  # True if agent to move is white, False if black
 
         results: List[PredictionResult] = []
 
-        # If no legal moves, return empty list
         for move in board.legal_moves:
             b2 = board.copy()
             b2.push(move)
 
-            eval_val, decisive = self.evaluator.evaluate_position(b2, is_white)
+            # Evaluate from opponent's perspective (it's their turn after our move),
+            # then invert the sign so positive means better for the mover.
+            eval_val, decisive = self.evaluator.evaluate_position(
+                b2, not mover_is_white
+            )
+            eval_val = -eval_val
 
             # eval_val += random.gauss(0, 0.01)
             # decisive += random.gauss(0, 0.01)

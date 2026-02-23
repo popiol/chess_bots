@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import chess
 import numpy as np
 
@@ -13,6 +15,9 @@ PIECE_VALUES = {
 }
 
 
+logger = logging.getLogger(__name__)
+
+
 class HeuristicEvaluator:
     """Evaluates chess positions using various heuristic metrics.
 
@@ -23,10 +28,10 @@ class HeuristicEvaluator:
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
         # Separate weights for profitable attack gains (our side and opponent)
-        self.opp_attack_weight = 0.2
-        self.material_weight = 0.2
-        self.piece_exposed_weight = 0.2
-        self.our_attack_weight = 0.04
+        self.our_attack_weight = 0.4
+        self.material_weight = 0.4
+        self.piece_exposed_weight = 0.4
+        self.opp_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
         self.king_weight = 0.04
@@ -264,7 +269,7 @@ class HeuristicEvaluator:
                         target_vals.append(None)
                     else:
                         target_vals.append(PIECE_VALUES.get(p.piece_type, 0))
-                if not target_vals:
+                if len(target_vals) < 2:
                     continue
                 # If any king placeholders present, set them to the strongest attacked value
                 if any(v is None for v in target_vals):
@@ -312,27 +317,17 @@ class HeuristicEvaluator:
                 attackers = list(board_after.attackers(opp, sq))
                 if not attackers:
                     continue
-                defenders = list(board_after.attackers(color, sq))
-                if not defenders:
-                    loss += PIECE_VALUES.get(piece.piece_type, 0)
-                    continue
-                # compare smallest attacker value vs smallest defender value
+                _loss = PIECE_VALUES.get(piece.piece_type, 0)
                 attacker_vals = []
                 for a in attackers:
                     pa = board_after.piece_at(a)
                     attacker_vals.append(
                         PIECE_VALUES.get(pa.piece_type, 0) if pa is not None else 0
                     )
-                defender_vals = []
-                for d in defenders:
-                    pd = board_after.piece_at(d)
-                    defender_vals.append(
-                        PIECE_VALUES.get(pd.piece_type, 0) if pd is not None else 0
-                    )
-                if not attacker_vals or not defender_vals:
-                    continue
-                if min(attacker_vals) <= min(defender_vals):
-                    loss += min(defender_vals) - min(attacker_vals)
+                defenders = list(board_after.attackers(color, sq))
+                if attacker_vals and defenders:
+                    _loss -= min(attacker_vals)
+                loss += max(0, _loss)
             return loss
 
         white_loss = exposed_points(chess.WHITE)
