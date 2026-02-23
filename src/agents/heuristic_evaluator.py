@@ -194,7 +194,7 @@ class HeuristicEvaluator:
         position_mate = self._position_mate_eval(board, is_white)
 
         eval_val = (
-            self.material_weight * material_eval
+            self.material_weight * material_eval * 0.5
             + self.our_attack_weight * our_attack
             + self.mobility_weight * mobility_eval
             + self.castling_weight * castling_eval
@@ -207,7 +207,7 @@ class HeuristicEvaluator:
 
         # Decisive ratio based on same subset
         decisive_ratio = (
-            self.material_weight * abs(material_eval)
+            self.material_weight * abs(material_eval) * 0.5
             + self.our_attack_weight * abs(our_attack)
             + self.mobility_weight * abs(mobility_eval)
             + self.castling_weight * abs(castling_eval)
