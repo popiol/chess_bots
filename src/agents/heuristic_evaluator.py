@@ -35,7 +35,8 @@ class HeuristicEvaluator:
         self.hanging_weight = 0.2
         self.advanced_queen_penalty_weight = 0.2
         self.opp_attack_weight = 0.04
-        self.knight_edge_penalty_weight = 0.04
+        self.knight_edge_penalty_weight = 0.1
+        self.king_adjacent_penalty_weight = 0.1
         self.pawn_promotion_weight = 0.03
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
@@ -97,6 +98,7 @@ class HeuristicEvaluator:
         outpost_knight_eval = self._outpost_knight_eval(board, is_white)
         knight_edge_penalty_eval = self._knight_edge_penalty_eval(board, is_white)
         advanced_queen_penalty_eval = self._advanced_queen_penalty_eval(board, is_white)
+        king_adjacent_eval = self._king_adjacent_initial_penalty_eval(board, is_white)
         space_advantage_eval = self._space_advantage_eval(board, is_white)
         backward_pawns_eval = self._backward_pawns_eval(board, is_white)
         squares_attacked_eval = self._squares_attacked_eval(board, is_white)
@@ -129,6 +131,7 @@ class HeuristicEvaluator:
             + self.outpost_knight_weight * outpost_knight_eval
             + self.knight_edge_penalty_weight * knight_edge_penalty_eval
             + self.advanced_queen_penalty_weight * advanced_queen_penalty_eval
+            + self.king_adjacent_penalty_weight * king_adjacent_eval
             + self.space_advantage_weight * space_advantage_eval
             + self.backward_pawns_weight * backward_pawns_eval
             + self.squares_attacked_weight * squares_attacked_eval
@@ -163,6 +166,7 @@ class HeuristicEvaluator:
             + self.outpost_knight_weight * abs(outpost_knight_eval)
             + self.knight_edge_penalty_weight * abs(knight_edge_penalty_eval)
             + self.advanced_queen_penalty_weight * abs(advanced_queen_penalty_eval)
+            + self.king_adjacent_penalty_weight * abs(king_adjacent_eval)
             + self.space_advantage_weight * abs(space_advantage_eval)
             + self.backward_pawns_weight * abs(backward_pawns_eval)
             + self.squares_attacked_weight * abs(squares_attacked_eval)
@@ -1379,6 +1383,35 @@ class HeuristicEvaluator:
         white_pen = queen_advance_for(chess.WHITE) * piece_density
         black_pen = queen_advance_for(chess.BLACK) * piece_density
 
+        our = white_pen if is_white else black_pen
+        opp = black_pen if is_white else white_pen
+        diff = opp - our
+        if diff == 0:
+            return 0.0
+        return float(np.clip(diff, -1.0, 1.0))
+
+    def _king_adjacent_initial_penalty_eval(
+        self, board_after: chess.Board, is_white: bool
+    ) -> float:
+        """Penalize kings that are one square away from their initial square.
+
+        Returns agent-perspective value (opp - our) clipped to [-1,1].
+        """
+
+        def side_penalty(color: bool) -> float:
+            king_sq = board_after.king(color)
+            if king_sq is None:
+                return 0.0
+            if color == chess.WHITE:
+                neighbors = {chess.D1, chess.F1, chess.D2, chess.E2, chess.F2}
+            else:
+                neighbors = {chess.D8, chess.F8, chess.D7, chess.E7, chess.F7}
+            if king_sq in neighbors:
+                return 1.0
+            return 0.0
+
+        white_pen = side_penalty(chess.WHITE)
+        black_pen = side_penalty(chess.BLACK)
         our = white_pen if is_white else black_pen
         opp = black_pen if is_white else white_pen
         diff = opp - our
