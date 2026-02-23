@@ -643,7 +643,9 @@ class HeuristicEvaluator:
             # Get values of attacking pieces, sorted weakest first
             attacker_values = sorted(
                 [
-                    PIECE_VALUES.get(board_after.piece_at(a).piece_type, 0)  # type: ignore
+                    PIECE_VALUES[board_after.piece_at(a).piece_type]  # type: ignore
+                    if board_after.piece_at(a).piece_type != chess.KING  # type: ignore
+                    else 10
                     for a in attackers
                 ]
             )
@@ -652,7 +654,9 @@ class HeuristicEvaluator:
             defenders = list(board_after.attackers(defender_color, sq))
             defender_values = sorted(
                 [
-                    PIECE_VALUES.get(board_after.piece_at(d).piece_type, 0)  # type: ignore
+                    PIECE_VALUES[board_after.piece_at(d).piece_type]  # type: ignore
+                    if board_after.piece_at(d).piece_type != chess.KING  # type: ignore
+                    else 10
                     for d in defenders
                 ]
             )
