@@ -183,7 +183,7 @@ class HeuristicEvaluator:
         center_eval = self._center_control_eval(board, is_white)
         mate_in_one = self._mate_in_one_eval(board, is_white)
         position_mate = self._position_mate_eval(board, is_white)
-        our_attack, _ = self._profitable_attack_eval(board, is_white)
+        our_attack, _ = self._profitable_attack_eval(board, is_white, fast=True)
 
         eval_val = (
             self.material_weight * material_eval * 0.5
@@ -555,7 +555,7 @@ class HeuristicEvaluator:
         return 0.0
 
     def _profitable_attack_eval(
-        self, board_after: chess.Board, is_white: bool
+        self, board_after: chess.Board, is_white: bool, fast: bool = False
     ) -> tuple[float, float]:
         """Evaluate material exchange on attacked squares.
 
@@ -614,10 +614,8 @@ class HeuristicEvaluator:
                     if next_step_defender_loss > step_attacker_loss:
                         break
                 attacker_loss += step_attacker_loss
-
-            print(
-                f"Square {chess.square_name(sq)}, color {defender_color}: Attacker loss={attacker_loss}, Defender loss={defender_loss}"
-            )
+                if fast:
+                    break
 
             net_gain = defender_loss - attacker_loss
             if net_gain > 0:
