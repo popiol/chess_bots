@@ -41,7 +41,7 @@ class HeuristicEvaluator:
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
         self.king_weight = 0.04
-        self.castling_weight = 0.04
+        self.castling_weight = 0.1
         self.center_weight = 0.04
         self.undeveloped_weight = 0.04
         self.passed_weight = 0.04
