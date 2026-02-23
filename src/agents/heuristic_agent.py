@@ -44,6 +44,7 @@ class HeuristicAgent(TrainableAgent):
             b2.push(move)
             fast_eval, _ = self.evaluator.evaluate_fast(b2, not mover_is_white)
             fast_eval = -fast_eval
+            fast_eval += random.gauss(0, 0.02)
             fast_rows.append((move, fast_eval))
         fast_end = time.perf_counter()
 
