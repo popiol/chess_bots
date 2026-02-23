@@ -31,7 +31,7 @@ class HeuristicEvaluator:
         self.our_attack_weight = 0.4
         self.material_weight = 0.8
         self.opp_piece_exposed_weight = 0.4
-        self.our_piece_exposed_weight = 0.2
+        self.our_piece_exposed_weight = 0.04
         self.opp_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04

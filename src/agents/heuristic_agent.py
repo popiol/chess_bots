@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import random
+import time
 from typing import List
 
 import chess
@@ -28,6 +30,7 @@ class HeuristicAgent(TrainableAgent):
         mover_is_white = board.turn  # True if agent to move is white, False if black
 
         results: List[PredictionResult] = []
+        start = time.perf_counter()
 
         for move in board.legal_moves:
             b2 = board.copy()
@@ -40,8 +43,8 @@ class HeuristicAgent(TrainableAgent):
             )
             eval_val = -eval_val
 
-            # eval_val += random.gauss(0, 0.01)
-            # decisive += random.gauss(0, 0.01)
+            eval_val += random.gauss(0, 0.01)
+            decisive += random.gauss(0, 0.01)
 
             uci = move.uci()
             from_sq = uci[0:2]
@@ -58,9 +61,10 @@ class HeuristicAgent(TrainableAgent):
 
         # Sort best moves first (higher eval better for agent)
         results.sort(key=lambda r: r.evaluation, reverse=True)
+
+        duration = time.perf_counter() - start
         logger.info(
-            "Max eval: %.3f Min eval: %.3f",
-            results[0].evaluation,
-            results[-1].evaluation,
+            "HeuristicAgent._predict: %.4fs for %d moves", duration, len(results)
         )
+
         return results[: self.prediction_count]
