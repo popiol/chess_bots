@@ -51,7 +51,7 @@ class HeuristicEvaluator:
         self.rook_open_file_weight = 0.03
         self.endgame_king_activity_weight = 0.03
         self.bishop_activity_weight = 0.03
-        self.knight_fork_weight = 0.03
+        self.fork_weight = 0.03
         self.outpost_knight_weight = 0.03
         self.space_advantage_weight = 0.03
         self.backward_pawns_weight = 0.03
@@ -95,7 +95,7 @@ class HeuristicEvaluator:
         rook_open_file_eval = self._rook_open_file_eval(board, is_white)
         endgame_king_activity_eval = self._endgame_king_activity_eval(board, is_white)
         bishop_activity_eval = self._bishop_activity_eval(board, is_white)
-        knight_forks_eval = self._knight_forks_eval(board, is_white)
+        forks_eval = self._forks_eval(board, is_white)
         outpost_knight_eval = self._outpost_knight_eval(board, is_white)
         space_advantage_eval = self._space_advantage_eval(board, is_white)
         backward_pawns_eval = self._backward_pawns_eval(board, is_white)
@@ -128,7 +128,7 @@ class HeuristicEvaluator:
             + self.rook_open_file_weight * rook_open_file_eval
             + self.endgame_king_activity_weight * endgame_king_activity_eval
             + self.bishop_activity_weight * bishop_activity_eval
-            + self.knight_fork_weight * knight_forks_eval
+            + self.fork_weight * forks_eval
             + self.outpost_knight_weight * outpost_knight_eval
             + self.space_advantage_weight * space_advantage_eval
             + self.backward_pawns_weight * backward_pawns_eval
@@ -163,7 +163,7 @@ class HeuristicEvaluator:
             + self.rook_open_file_weight * abs(rook_open_file_eval)
             + self.endgame_king_activity_weight * abs(endgame_king_activity_eval)
             + self.bishop_activity_weight * abs(bishop_activity_eval)
-            + self.knight_fork_weight * abs(knight_forks_eval)
+            + self.fork_weight * abs(forks_eval)
             + self.outpost_knight_weight * abs(outpost_knight_eval)
             + self.space_advantage_weight * abs(space_advantage_eval)
             + self.backward_pawns_weight * abs(backward_pawns_eval)
@@ -305,7 +305,7 @@ class HeuristicEvaluator:
             return 0.0
         return float(np.clip((diff) / 50.0, -1.0, 1.0))
 
-    def _knight_forks_eval(self, board_after: chess.Board, is_white: bool) -> float:
+    def _forks_eval(self, board_after: chess.Board, is_white: bool) -> float:
         """Evaluate knight forks: sum value of top-two attacked opponent pieces per knight.
 
         For each knight of a side, if it attacks two or more opponent pieces,
@@ -315,7 +315,12 @@ class HeuristicEvaluator:
 
         def forks_for(color: bool) -> float:
             total = 0.0
-            for sq in board_after.pieces(chess.KNIGHT, color):
+            for sq in board_after.piece_map().keys():
+                piece = board_after.piece_at(sq)
+                if piece is None or piece.color != color:
+                    continue
+                if piece.piece_type == chess.KING:
+                    continue
                 attacked = list(board_after.attacks(sq))
                 target_vals = []
                 for t in attacked:
@@ -331,19 +336,14 @@ class HeuristicEvaluator:
                         target_vals.append(PIECE_VALUES.get(p.piece_type, 0))
                 if len(target_vals) < 2:
                     continue
-                # If any king placeholders present, set them to the strongest attacked value
-                if any(v is None for v in target_vals):
+                # If king is present, set it to the strongest attacked value
+                if None in target_vals:
                     non_king_vals = [v for v in target_vals if v is not None]
-                    max_val = (
-                        max(non_king_vals)
-                        if non_king_vals
-                        else PIECE_VALUES.get(chess.QUEEN, 9)
-                    )
+                    max_val = max(non_king_vals)
                     total += max_val
-                elif len(target_vals) >= 2:
+                else:
                     target_vals.sort(reverse=True)
                     total += target_vals[1]
-                total -= PIECE_VALUES[chess.KNIGHT]
             return total
 
         white_score = forks_for(chess.WHITE)

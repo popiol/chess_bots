@@ -50,7 +50,7 @@ class HeuristicTester:
             board, is_white
         )
         out["bishop_activity"] = self.evaluator._bishop_activity_eval(board, is_white)
-        out["knight_forks"] = self.evaluator._knight_forks_eval(board, is_white)
+        out["knight_forks"] = self.evaluator._forks_eval(board, is_white)
         out["outpost_knight"] = self.evaluator._outpost_knight_eval(board, is_white)
         out["space_advantage"] = self.evaluator._space_advantage_eval(board, is_white)
         out["backward_pawns"] = self.evaluator._backward_pawns_eval(board, is_white)
