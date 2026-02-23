@@ -79,7 +79,7 @@ class HeuristicAgent(TrainableAgent):
         logger.info(
             "HeuristicAgent._predict: %.4fs (fast pre-eval + full eval) for %d candidates",
             duration,
-            len(results),
+            board.legal_moves.count,
         )
 
         return results[: self.prediction_count]
