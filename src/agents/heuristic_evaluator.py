@@ -27,9 +27,10 @@ class HeuristicEvaluator:
 
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
-        self.material_weight = 0.5
-        self.our_attack_weight = 0.4
+        self.material_weight = 0.4
+        self.our_attack_weight = 0.6
         self.attack_value_diff_weight = 0.2
+        self.hanging_weight = 0.2
         self.opp_attack_weight = 0.04
         self.mate_in_one_weight = 0.8
         self.position_mate_weight = 1.0
@@ -44,7 +45,6 @@ class HeuristicEvaluator:
         self.doubled_weight = 0.04
         self.isolated_weight = 0.04
         self.check_weight = 0.04
-        self.hanging_weight = 0.03
         self.bishop_pair_weight = 0.03
         self.rook_open_file_weight = 0.03
         self.endgame_king_activity_weight = 0.03
@@ -87,7 +87,6 @@ class HeuristicEvaluator:
         doubled_eval = self._doubled_pawns_eval(board, is_white)
         isolated_eval = self._isolated_pawns_eval(board, is_white)
         passed_eval = self._passed_pawns_eval(board, is_white)
-        hanging_eval = self._hanging_pieces_eval(board, is_white)
         bishop_pair_eval = self._bishop_pair_eval(board, is_white)
         rook_open_file_eval = self._rook_open_file_eval(board, is_white)
         endgame_king_activity_eval = self._endgame_king_activity_eval(board, is_white)
@@ -118,7 +117,6 @@ class HeuristicEvaluator:
             + self.doubled_weight * doubled_eval
             + self.isolated_weight * isolated_eval
             + self.passed_weight * passed_eval
-            + self.hanging_weight * hanging_eval
             + self.bishop_pair_weight * bishop_pair_eval
             + self.rook_open_file_weight * rook_open_file_eval
             + self.endgame_king_activity_weight * endgame_king_activity_eval
@@ -151,7 +149,6 @@ class HeuristicEvaluator:
             + self.doubled_weight * abs(doubled_eval)
             + self.isolated_weight * abs(isolated_eval)
             + self.passed_weight * abs(passed_eval)
-            + self.hanging_weight * abs(hanging_eval)
             + self.bishop_pair_weight * abs(bishop_pair_eval)
             + self.rook_open_file_weight * abs(rook_open_file_eval)
             + self.endgame_king_activity_weight * abs(endgame_king_activity_eval)
@@ -185,6 +182,7 @@ class HeuristicEvaluator:
         mate_in_one = self._mate_in_one_eval(board, is_white)
         position_mate = self._position_mate_eval(board, is_white)
         attack_value_diff_eval = self._attack_value_diff_eval(board, is_white)
+        hanging_eval = self._hanging_pieces_eval(board, is_white)
 
         eval_val = (
             self.material_weight * material_eval * 0.5
@@ -195,6 +193,7 @@ class HeuristicEvaluator:
             + self.mate_in_one_weight * mate_in_one
             + self.position_mate_weight * position_mate
             + self.attack_value_diff_weight * attack_value_diff_eval
+            + self.hanging_weight * hanging_eval
         )
         eval_val = float(np.clip(eval_val, -1.0, 1.0))
 
@@ -208,6 +207,7 @@ class HeuristicEvaluator:
             + self.mate_in_one_weight * abs(mate_in_one)
             + self.position_mate_weight * abs(position_mate)
             + self.attack_value_diff_weight * abs(attack_value_diff_eval)
+            + self.hanging_weight * abs(hanging_eval)
         )
         decisive = float(np.clip(decisive_ratio, 0.0, 1.0))
 
