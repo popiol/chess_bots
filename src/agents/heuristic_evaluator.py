@@ -49,7 +49,6 @@ class HeuristicEvaluator:
         self.endgame_king_activity_weight = 0.03
         self.bishop_activity_weight = 0.03
         self.fork_weight = 0.03
-        self.attacked_values_weight = 0.03
         self.outpost_knight_weight = 0.03
         self.space_advantage_weight = 0.03
         self.backward_pawns_weight = 0.03
@@ -184,17 +183,17 @@ class HeuristicEvaluator:
         center_eval = self._center_control_eval(board, is_white)
         mate_in_one = self._mate_in_one_eval(board, is_white)
         position_mate = self._position_mate_eval(board, is_white)
-        attacked_values_eval = self._attacked_values_eval(board, is_white)
+        our_attack, _ = self._profitable_attack_eval(board, is_white)
 
         eval_val = (
             self.material_weight * material_eval * 0.5
             + self.mobility_weight * mobility_eval
             + self.castling_weight * castling_eval
-            + self.attacked_values_weight * attacked_values_eval
             + self.check_weight * check_eval
             + self.center_weight * center_eval
             + self.mate_in_one_weight * mate_in_one
             + self.position_mate_weight * position_mate
+            + self.our_attack_weight * our_attack
         )
         eval_val = float(np.clip(eval_val, -1.0, 1.0))
 
@@ -203,11 +202,11 @@ class HeuristicEvaluator:
             self.material_weight * abs(material_eval) * 0.5
             + self.mobility_weight * abs(mobility_eval)
             + self.castling_weight * abs(castling_eval)
-            + self.attacked_values_weight * abs(attacked_values_eval)
             + self.check_weight * abs(check_eval)
             + self.center_weight * abs(center_eval)
             + self.mate_in_one_weight * abs(mate_in_one)
             + self.position_mate_weight * abs(position_mate)
+            + self.our_attack_weight * abs(our_attack)
         )
         decisive = float(np.clip(decisive_ratio, 0.0, 1.0))
 
@@ -348,38 +347,6 @@ class HeuristicEvaluator:
             return 0.0
         max_fork = 9.0
         scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_fork))
-        return float(np.clip(scaled, -1.0, 1.0))
-
-    def _attacked_values_eval(self, board_after: chess.Board, is_white: bool) -> float:
-        """Compute difference in total value of opponent pieces attacked by each side.
-
-        Returns a normalized value in [-1,1] positive when the evaluated side
-        attacks higher-value opponent pieces than the opponent attacks of ours.
-        """
-        white_attacked = 0
-        black_attacked = 0
-        for sq, piece in board_after.piece_map().items():
-            if piece is None:
-                continue
-            val = PIECE_VALUES.get(piece.piece_type, 0)
-            # If white attacks a black piece on sq
-            if piece.color == chess.BLACK and board_after.is_attacked_by(
-                chess.WHITE, sq
-            ):
-                white_attacked += val
-            # If black attacks a white piece on sq
-            if piece.color == chess.WHITE and board_after.is_attacked_by(
-                chess.BLACK, sq
-            ):
-                black_attacked += val
-
-        our = white_attacked if is_white else black_attacked
-        opp = black_attacked if is_white else white_attacked
-        diff = our - opp
-        if diff == 0:
-            return 0.0
-        max_attacked = 39.0
-        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_attacked))
         return float(np.clip(scaled, -1.0, 1.0))
 
     def _piece_exposed_eval(
