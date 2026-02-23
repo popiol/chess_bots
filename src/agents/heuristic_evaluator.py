@@ -32,6 +32,7 @@ class HeuristicEvaluator:
         self.material_weight = 0.8
         self.opp_piece_exposed_weight = 0.4
         self.our_piece_exposed_weight = 0.04
+        self.mate_in_one_weight = 0.8
         self.opp_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
@@ -75,6 +76,7 @@ class HeuristicEvaluator:
         mobility_eval = self._mobility_eval(board, is_white)
         safe_mobility_eval = self._safe_mobility_eval(board, is_white)
         piece_exposed_our, piece_exposed_opp = self._piece_exposed_eval(board, is_white)
+        mate_against_us = self._mate_in_one_eval(board, is_white)
         king_eval = self._king_safety_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
@@ -104,6 +106,7 @@ class HeuristicEvaluator:
             + self.safe_mobility_weight * safe_mobility_eval
             + self.opp_piece_exposed_weight * piece_exposed_opp
             - self.our_piece_exposed_weight * piece_exposed_our
+            - self.mate_in_one_weight * mate_against_us
             + self.king_weight * king_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
@@ -136,6 +139,7 @@ class HeuristicEvaluator:
             + self.safe_mobility_weight * abs(safe_mobility_eval)
             + self.our_piece_exposed_weight * abs(piece_exposed_our)
             + self.opp_piece_exposed_weight * abs(piece_exposed_opp)
+            + self.mate_in_one_weight * abs(mate_against_us)
             + self.king_weight * abs(king_eval)
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
@@ -177,6 +181,7 @@ class HeuristicEvaluator:
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
         center_eval = self._center_control_eval(board, is_white)
+        mate_against_us = self._mate_in_one_eval(board, is_white)
 
         eval_val = (
             self.material_weight * material_eval
@@ -184,6 +189,7 @@ class HeuristicEvaluator:
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
             + self.center_weight * center_eval
+            - self.mate_in_one_weight * mate_against_us
         )
         eval_val = float(np.clip(eval_val, -1.0, 1.0))
 
@@ -194,6 +200,7 @@ class HeuristicEvaluator:
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
             + self.center_weight * abs(center_eval)
+            + self.mate_in_one_weight * abs(mate_against_us)
         )
         decisive = float(np.clip(decisive_ratio, 0.0, 1.0))
 
@@ -384,18 +391,30 @@ class HeuristicEvaluator:
 
         return scaled_our, scaled_opp
 
+    def _mate_in_one_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Return 1.0 if the opponent (not is_white) has a mate-in-one, else 0.0.
+
+        This metric is intentionally single-valued: a mate-in-one existing for
+        the opponent is always bad for the evaluated side.
+        """
+        opp = not is_white
+        b = board_after.copy()
+        b.turn = opp
+        for mv in b.legal_moves:
+            b2 = b.copy()
+            b2.push(mv)
+            if b2.is_checkmate():
+                return 1.0
+        return 0.0
+
     def _castling_bonus(self, board_after: chess.Board, is_white: bool) -> float:
         """Return a small positive bonus if the side to move is castled.
 
         Detects castling by checking king square (g1/c1 for white, g8/c8 for black).
         """
         # Detect castling by king square presence on castled squares (g1/c1 for white, g8/c8 for black)
-        try:
-            wking = board_after.king(chess.WHITE)
-            bking = board_after.king(chess.BLACK)
-        except Exception:
-            wking = None
-            bking = None
+        wking = board_after.king(chess.WHITE)
+        bking = board_after.king(chess.BLACK)
 
         white_castled = wking in (chess.G1, chess.C1)
         black_castled = bking in (chess.G8, chess.C8)
