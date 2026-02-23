@@ -32,12 +32,25 @@ class HeuristicAgent(TrainableAgent):
         results: List[PredictionResult] = []
         start = time.perf_counter()
 
+        # Fast pre-evaluation: score all legal moves with evaluate_fast,
+        # pick top-N candidates, then fully evaluate those with evaluate_position.
+        fast_rows: list[tuple[chess.Move, float]] = []
         for move in board.legal_moves:
             b2 = board.copy()
             b2.push(move)
+            fast_eval, _ = self.evaluator.evaluate_fast(b2, not mover_is_white)
+            fast_eval = -fast_eval
+            fast_rows.append((move, fast_eval))
 
-            # Evaluate from opponent's perspective (it's their turn after our move),
-            # then invert the sign so positive means better for the mover.
+        fast_rows.sort(key=lambda r: r[1], reverse=True)
+        top_n = min(10, len(fast_rows))
+        candidates = [r[0] for r in fast_rows[:top_n]]
+
+        for move in candidates:
+            b2 = board.copy()
+            b2.push(move)
+
+            # Full evaluation from opponent perspective then invert
             eval_val, decisive = self.evaluator.evaluate_position(
                 b2, not mover_is_white
             )
@@ -64,7 +77,9 @@ class HeuristicAgent(TrainableAgent):
 
         duration = time.perf_counter() - start
         logger.info(
-            "HeuristicAgent._predict: %.4fs for %d moves", duration, len(results)
+            "HeuristicAgent._predict: %.4fs (fast pre-eval + full eval) for %d candidates",
+            duration,
+            len(results),
         )
 
         return results[: self.prediction_count]

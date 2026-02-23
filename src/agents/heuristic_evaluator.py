@@ -163,6 +163,61 @@ class HeuristicEvaluator:
 
         return eval_val, decisive
 
+    def evaluate_fast(self, board: chess.Board, is_white: bool) -> tuple[float, float]:
+        """Fast evaluation using only the most important metrics.
+
+        This is a lightweight approximation of `evaluate_position` that
+        computes material, mobility, safe mobility, piece exposures,
+        king safety and profitable-attack estimates. It returns the
+        same (evaluation, decisive) tuple but is cheaper to compute.
+        """
+        # core metrics only
+        material_eval = self._material_eval(board, is_white)
+        mobility_eval = self._mobility_eval(board, is_white)
+        piece_exposed_our, piece_exposed_opp = self._piece_exposed_eval(board, is_white)
+        king_eval = self._king_safety_eval(board, is_white)
+        our_attack, opp_attack = self._profitable_attack_eval(board, is_white)
+        castling_eval = self._castling_bonus(board, is_white)
+        check_eval = self._check_eval(board, is_white)
+        center_eval = self._center_control_eval(board, is_white)
+        undeveloped_eval = self._undeveloped_pieces_eval(board, is_white)
+        hanging_eval = self._hanging_pieces_eval(board, is_white)
+
+        eval_val = (
+            self.material_weight * material_eval
+            + self.mobility_weight * mobility_eval
+            + self.opp_piece_exposed_weight * piece_exposed_opp
+            - self.our_piece_exposed_weight * piece_exposed_our
+            + self.king_weight * king_eval
+            + self.our_attack_weight * our_attack
+            - self.opp_attack_weight * opp_attack
+            + self.castling_weight * castling_eval
+            + self.check_weight * check_eval
+            + self.center_weight * center_eval
+            + self.undeveloped_weight * undeveloped_eval
+            + self.hanging_weight * hanging_eval
+        )
+        eval_val = float(np.clip(eval_val, -1.0, 1.0))
+
+        # Decisive ratio based on same subset
+        decisive_ratio = (
+            self.material_weight * abs(material_eval)
+            + self.mobility_weight * abs(mobility_eval)
+            + self.our_piece_exposed_weight * abs(piece_exposed_our)
+            + self.opp_piece_exposed_weight * abs(piece_exposed_opp)
+            + self.king_weight * abs(king_eval)
+            + self.our_attack_weight * abs(our_attack)
+            + self.opp_attack_weight * abs(opp_attack)
+            + self.castling_weight * abs(castling_eval)
+            + self.check_weight * abs(check_eval)
+            + self.center_weight * abs(center_eval)
+            + self.undeveloped_weight * abs(undeveloped_eval)
+            + self.hanging_weight * abs(hanging_eval)
+        )
+        decisive = float(np.clip(decisive_ratio, 0.0, 1.0))
+
+        return eval_val, decisive
+
     def _material_eval(self, board_after: chess.Board, is_white: bool) -> float:
         """Compute normalized material evaluation for the side to move.
 
@@ -966,27 +1021,26 @@ class HeuristicEvaluator:
                 # Check if stop square is controlled by enemy pawn
                 if not board_after.is_attacked_by(opp_color, stop_sq):
                     continue
-                    # Check no friendly pawn on adjacent files at same or behind rank
-                    has_support = False
-                    for df in (-1, 1):
-                        f = file + df
-                        if f < 0 or f > 7:
-                            continue
-                        # Check friendly pawns on adjacent file at same rank or behind
-                        check_ranks = (
-                            range(rank, -1, -1)
-                            if color == chess.WHITE
-                            else range(rank, 8)
-                        )
-                        for r in check_ranks:
-                            p = board_after.piece_at(chess.square(f, r))
-                            if p and p.piece_type == chess.PAWN and p.color == color:
-                                has_support = True
-                                break
-                        if has_support:
+                # Check no friendly pawn on adjacent files at same or behind rank
+                has_support = False
+                for df in (-1, 1):
+                    f = file + df
+                    if f < 0 or f > 7:
+                        continue
+                    # Check friendly pawns on adjacent file at same rank or behind
+                    check_ranks = (
+                        range(rank, -1, -1) if color == chess.WHITE else range(rank, 8)
+                    )
+                    for r in check_ranks:
+                        p = board_after.piece_at(chess.square(f, r))
+                        if p and p.piece_type == chess.PAWN and p.color == color:
+                            has_support = True
                             break
-                    if not has_support:
-                        count += 1
+                    if has_support:
+                        break
+
+                if not has_support:
+                    count += 1
             return count
 
         white_backward = count_backward(chess.WHITE)
