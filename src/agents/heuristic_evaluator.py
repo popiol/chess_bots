@@ -29,8 +29,9 @@ class HeuristicEvaluator:
         """Initialize the evaluator with default weights for each metric."""
         # Separate weights for profitable attack gains (our side and opponent)
         self.our_attack_weight = 0.4
-        self.material_weight = 0.4
-        self.piece_exposed_weight = 0.4
+        self.material_weight = 0.8
+        self.opp_piece_exposed_weight = 0.4
+        self.our_piece_exposed_weight = 0.2
         self.opp_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
@@ -73,7 +74,7 @@ class HeuristicEvaluator:
         material_eval = self._material_eval(board, is_white)
         mobility_eval = self._mobility_eval(board, is_white)
         safe_mobility_eval = self._safe_mobility_eval(board, is_white)
-        piece_exposed_eval = self._piece_exposed_eval(board, is_white)
+        piece_exposed_our, piece_exposed_opp = self._piece_exposed_eval(board, is_white)
         king_eval = self._king_safety_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
@@ -101,7 +102,8 @@ class HeuristicEvaluator:
             self.material_weight * material_eval
             + self.mobility_weight * mobility_eval
             + self.safe_mobility_weight * safe_mobility_eval
-            + self.piece_exposed_weight * piece_exposed_eval
+            + self.opp_piece_exposed_weight * piece_exposed_opp
+            - self.our_piece_exposed_weight * piece_exposed_our
             + self.king_weight * king_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
@@ -132,7 +134,8 @@ class HeuristicEvaluator:
             self.material_weight * abs(material_eval)
             + self.mobility_weight * abs(mobility_eval)
             + self.safe_mobility_weight * abs(safe_mobility_eval)
-            + self.piece_exposed_weight * abs(piece_exposed_eval)
+            + self.our_piece_exposed_weight * abs(piece_exposed_our)
+            + self.opp_piece_exposed_weight * abs(piece_exposed_opp)
             + self.king_weight * abs(king_eval)
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
@@ -297,7 +300,9 @@ class HeuristicEvaluator:
         scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_fork))
         return float(np.clip(scaled, -1.0, 1.0))
 
-    def _piece_exposed_eval(self, board_after: chess.Board, is_white: bool) -> float:
+    def _piece_exposed_eval(
+        self, board_after: chess.Board, is_white: bool
+    ) -> tuple[float, float]:
         """Detect whether pieces can be taken (hanging or favorable trade).
 
         For every piece on the board, consider whether opponent attackers exist
@@ -332,13 +337,16 @@ class HeuristicEvaluator:
 
         white_loss = exposed_points(chess.WHITE)
         black_loss = exposed_points(chess.BLACK)
+
         our_loss = white_loss if is_white else black_loss
         opp_loss = black_loss if is_white else white_loss
-        diff = opp_loss - our_loss  # Opponent having exposed pieces is good for us
-        if diff == 0:
-            return 0.0
-        # Normalize by queen value (9) to keep metric in similar scale
-        return float(np.clip(diff / 9.0, -1.0, 1.0))
+
+        # Scale both losses independently into [0,1] using queen value as baseline
+        max_loss = 9.0
+        scaled_our = float(np.clip(our_loss / max_loss, 0.0, 1.0))
+        scaled_opp = float(np.clip(opp_loss / max_loss, 0.0, 1.0))
+
+        return scaled_our, scaled_opp
 
     def _castling_bonus(self, board_after: chess.Board, is_white: bool) -> float:
         """Return a small positive bonus if the side to move is castled.

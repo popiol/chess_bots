@@ -23,7 +23,9 @@ class HeuristicTester:
         out["material"] = self.evaluator._material_eval(board, is_white)
         out["mobility"] = self.evaluator._mobility_eval(board, is_white)
         out["safe_mobility"] = self.evaluator._safe_mobility_eval(board, is_white)
-        out["piece_exposed"] = self.evaluator._piece_exposed_eval(board, is_white)
+        our_pe, opp_pe = self.evaluator._piece_exposed_eval(board, is_white)
+        out["our_piece_exposed"] = our_pe
+        out["opp_piece_exposed"] = opp_pe
         out["king_safety"] = self.evaluator._king_safety_eval(board, is_white)
         out["castling"] = self.evaluator._castling_bonus(board, is_white)
         out["check"] = self.evaluator._check_eval(board, is_white)
@@ -88,16 +90,58 @@ class HeuristicTester:
                 else f" - {k}: {metrics[k]}"
             )
 
+    def display_moves(self, fen: str) -> None:
+        """Iterate legal moves and print mover-centric evaluation for each."""
+        board = chess.Board(fen)
+        mover_is_white = bool(board.turn)
+
+        rows = []
+        for mv in board.legal_moves:
+            b2 = board.copy()
+            try:
+                b2.push(mv)
+            except Exception:
+                continue
+            # Evaluate from opponent perspective then invert so positive is good for mover
+            eval_val, decisive = self.evaluator.evaluate_position(
+                b2, not mover_is_white
+            )
+            eval_val = -eval_val
+            rows.append((mv.uci(), eval_val, decisive))
+
+        # Sort by evaluation descending (best for mover first)
+        rows.sort(key=lambda r: r[1], reverse=True)
+
+        print(f"FEN: {fen}")
+        side = "White" if mover_is_white else "Black"
+        print(f"Mover: {side} (listing moves good for mover first)")
+        for uci, ev, dec in rows:
+            print(f" - {uci}: eval={ev:.4f} decisive={dec:.4f}")
+
 
 def main() -> None:
     p = argparse.ArgumentParser(
         description="Display heuristic metrics for a FEN position"
     )
-    p.add_argument("--fen", required=True, help="FEN string of the position")
+    p.add_argument(
+        "--fen",
+        default="rkbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        help="FEN string of the position",
+    )
+    p.add_argument(
+        "--mode",
+        choices=("metrics", "moves"),
+        default="metrics",
+        help='Mode to display: "metrics" shows metric breakdown, "moves" lists move evaluations',
+    )
+
     args = p.parse_args()
 
     tester = HeuristicTester()
-    tester.display(args.fen)
+    if args.mode == "metrics":
+        tester.display(args.fen)
+    else:
+        tester.display_moves(args.fen)
 
 
 if __name__ == "__main__":
