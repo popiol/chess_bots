@@ -27,12 +27,9 @@ class HeuristicEvaluator:
 
     def __init__(self):
         """Initialize the evaluator with default weights for each metric."""
-        # Separate weights for profitable attack gains (our side and opponent)
         self.material_weight = 0.4
-        self.our_attack_weight = 0.3
-        self.opp_piece_exposed_weight = 0.2
+        self.our_attack_weight = 0.5
         self.opp_attack_weight = 0.04
-        self.our_piece_exposed_weight = 0.04
         self.mate_in_one_weight = 0.8
         self.position_mate_weight = 1.0
         self.pawn_promotion_weight = 0.03
@@ -52,6 +49,7 @@ class HeuristicEvaluator:
         self.endgame_king_activity_weight = 0.03
         self.bishop_activity_weight = 0.03
         self.fork_weight = 0.03
+        self.attacked_values_weight = 0.03
         self.outpost_knight_weight = 0.03
         self.space_advantage_weight = 0.03
         self.backward_pawns_weight = 0.03
@@ -77,7 +75,6 @@ class HeuristicEvaluator:
         material_eval = self._material_eval(board, is_white)
         mobility_eval = self._mobility_eval(board, is_white)
         safe_mobility_eval = self._safe_mobility_eval(board, is_white)
-        piece_exposed_our, piece_exposed_opp = self._piece_exposed_eval(board, is_white)
         mate_in_one = self._mate_in_one_eval(board, is_white)
         pawn_promo_eval = self._pawn_promotion_progress_eval(board, is_white)
         position_mate = self._position_mate_eval(board, is_white)
@@ -108,8 +105,6 @@ class HeuristicEvaluator:
             self.material_weight * material_eval
             + self.mobility_weight * mobility_eval
             + self.safe_mobility_weight * safe_mobility_eval
-            + self.opp_piece_exposed_weight * piece_exposed_opp
-            - self.our_piece_exposed_weight * piece_exposed_our
             + self.mate_in_one_weight * mate_in_one
             + self.pawn_promotion_weight * pawn_promo_eval
             + self.position_mate_weight * position_mate
@@ -143,8 +138,6 @@ class HeuristicEvaluator:
             self.material_weight * abs(material_eval)
             + self.mobility_weight * abs(mobility_eval)
             + self.safe_mobility_weight * abs(safe_mobility_eval)
-            + self.our_piece_exposed_weight * abs(piece_exposed_our)
-            + self.opp_piece_exposed_weight * abs(piece_exposed_opp)
             + self.mate_in_one_weight * abs(mate_in_one)
             + self.pawn_promotion_weight * abs(pawn_promo_eval)
             + self.position_mate_weight * abs(position_mate)
@@ -184,7 +177,6 @@ class HeuristicEvaluator:
         same (evaluation, decisive) tuple but is cheaper to compute.
         """
         # core metrics only
-        our_attack, _ = self._profitable_attack_eval(board, is_white)
         material_eval = self._material_eval(board, is_white)
         mobility_eval = self._mobility_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
@@ -192,12 +184,13 @@ class HeuristicEvaluator:
         center_eval = self._center_control_eval(board, is_white)
         mate_in_one = self._mate_in_one_eval(board, is_white)
         position_mate = self._position_mate_eval(board, is_white)
+        attacked_values_eval = self._attacked_values_eval(board, is_white)
 
         eval_val = (
             self.material_weight * material_eval * 0.5
-            + self.our_attack_weight * our_attack
             + self.mobility_weight * mobility_eval
             + self.castling_weight * castling_eval
+            + self.attacked_values_weight * attacked_values_eval
             + self.check_weight * check_eval
             + self.center_weight * center_eval
             + self.mate_in_one_weight * mate_in_one
@@ -208,9 +201,9 @@ class HeuristicEvaluator:
         # Decisive ratio based on same subset
         decisive_ratio = (
             self.material_weight * abs(material_eval) * 0.5
-            + self.our_attack_weight * abs(our_attack)
             + self.mobility_weight * abs(mobility_eval)
             + self.castling_weight * abs(castling_eval)
+            + self.attacked_values_weight * abs(attacked_values_eval)
             + self.check_weight * abs(check_eval)
             + self.center_weight * abs(center_eval)
             + self.mate_in_one_weight * abs(mate_in_one)
@@ -355,6 +348,38 @@ class HeuristicEvaluator:
             return 0.0
         max_fork = 9.0
         scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_fork))
+        return float(np.clip(scaled, -1.0, 1.0))
+
+    def _attacked_values_eval(self, board_after: chess.Board, is_white: bool) -> float:
+        """Compute difference in total value of opponent pieces attacked by each side.
+
+        Returns a normalized value in [-1,1] positive when the evaluated side
+        attacks higher-value opponent pieces than the opponent attacks of ours.
+        """
+        white_attacked = 0
+        black_attacked = 0
+        for sq, piece in board_after.piece_map().items():
+            if piece is None:
+                continue
+            val = PIECE_VALUES.get(piece.piece_type, 0)
+            # If white attacks a black piece on sq
+            if piece.color == chess.BLACK and board_after.is_attacked_by(
+                chess.WHITE, sq
+            ):
+                white_attacked += val
+            # If black attacks a white piece on sq
+            if piece.color == chess.WHITE and board_after.is_attacked_by(
+                chess.BLACK, sq
+            ):
+                black_attacked += val
+
+        our = white_attacked if is_white else black_attacked
+        opp = black_attacked if is_white else white_attacked
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        max_attacked = 39.0
+        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_attacked))
         return float(np.clip(scaled, -1.0, 1.0))
 
     def _piece_exposed_eval(
