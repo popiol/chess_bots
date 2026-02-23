@@ -87,6 +87,13 @@ class HeuristicAgent(TrainableAgent):
         full_duration = full_end - full_start
         num_candidates = len(results)
 
+        # print best 2 moves evaluations
+        logger.info(
+            "HeuristicAgent._predict: fen=%s evals=[%s]",
+            fen,
+            ", ".join(f"{r.evaluation:.4f}" for r in results[:2]),
+        )
+
         logger.info(
             "HeuristicAgent._predict: total=%.4fs fast=%.4fs full=%.4fs candidates=%d/%d",
             duration,
