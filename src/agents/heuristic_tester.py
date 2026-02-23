@@ -28,6 +28,9 @@ class HeuristicTester:
         out["opp_piece_exposed"] = opp_pe
         mate_against_us = self.evaluator._mate_in_one_eval(board, is_white)
         out["mate_against_us"] = mate_against_us
+        out["pawn_promotion_progress"] = self.evaluator._pawn_promotion_progress_eval(
+            board, is_white
+        )
         out["king_safety"] = self.evaluator._king_safety_eval(board, is_white)
         out["castling"] = self.evaluator._castling_bonus(board, is_white)
         out["check"] = self.evaluator._check_eval(board, is_white)

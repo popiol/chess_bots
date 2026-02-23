@@ -33,6 +33,7 @@ class HeuristicEvaluator:
         self.opp_piece_exposed_weight = 0.4
         self.our_piece_exposed_weight = 0.04
         self.mate_in_one_weight = 0.8
+        self.pawn_promotion_weight = 0.03
         self.opp_attack_weight = 0.04
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
@@ -77,6 +78,7 @@ class HeuristicEvaluator:
         safe_mobility_eval = self._safe_mobility_eval(board, is_white)
         piece_exposed_our, piece_exposed_opp = self._piece_exposed_eval(board, is_white)
         mate_against_us = self._mate_in_one_eval(board, is_white)
+        pawn_promo_eval = self._pawn_promotion_progress_eval(board, is_white)
         king_eval = self._king_safety_eval(board, is_white)
         castling_eval = self._castling_bonus(board, is_white)
         check_eval = self._check_eval(board, is_white)
@@ -107,6 +109,7 @@ class HeuristicEvaluator:
             + self.opp_piece_exposed_weight * piece_exposed_opp
             - self.our_piece_exposed_weight * piece_exposed_our
             - self.mate_in_one_weight * mate_against_us
+            + self.pawn_promotion_weight * pawn_promo_eval
             + self.king_weight * king_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
@@ -140,6 +143,7 @@ class HeuristicEvaluator:
             + self.our_piece_exposed_weight * abs(piece_exposed_our)
             + self.opp_piece_exposed_weight * abs(piece_exposed_opp)
             + self.mate_in_one_weight * abs(mate_against_us)
+            + self.pawn_promotion_weight * abs(pawn_promo_eval)
             + self.king_weight * abs(king_eval)
             + self.castling_weight * abs(castling_eval)
             + self.check_weight * abs(check_eval)
@@ -406,6 +410,37 @@ class HeuristicEvaluator:
             if b2.is_checkmate():
                 return 1.0
         return 0.0
+
+    def _pawn_promotion_progress_eval(
+        self, board_after: chess.Board, is_white: bool
+    ) -> float:
+        """Compute pawn promotion progress for each side and return agent-perspective value.
+
+        For each pawn we compute a progress in [0,1] where 0 is on the home rank
+        and 1 is on the 7th rank (ready to promote). Sum progress for each side
+        (max 8) and return (our_progress - opp_progress) / 8 clipped to [-1,1].
+        Positive values are good for the evaluated side.
+        """
+        white_progress = 0.0
+        black_progress = 0.0
+        for sq, piece in board_after.piece_map().items():
+            if piece.piece_type != chess.PAWN:
+                continue
+            rank = chess.square_rank(sq)  # 0..7
+            if piece.color == chess.WHITE:
+                # progress 0 at rank 0, 1 at rank 7
+                white_progress += rank / 7.0
+            else:
+                # for black, progress increases as rank decreases
+                black_progress += (7 - rank) / 7.0
+
+        our = white_progress if is_white else black_progress
+        opp = black_progress if is_white else white_progress
+        diff = our - opp
+        if diff == 0:
+            return 0.0
+        # normalize by max pawns (8)
+        return float(np.clip(diff / 8.0, -1.0, 1.0))
 
     def _castling_bonus(self, board_after: chess.Board, is_white: bool) -> float:
         """Return a small positive bonus if the side to move is castled.
