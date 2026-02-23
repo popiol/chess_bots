@@ -33,6 +33,12 @@ class HeuristicTester:
         our_att, opp_att = self.evaluator._profitable_attack_eval(board, is_white)
         out["our_profitable_attack"] = our_att
         out["opp_profitable_attack"] = opp_att
+        out["knight_edge_penalty"] = self.evaluator._knight_edge_penalty_eval(
+            board, is_white
+        )
+        out["advanced_queen_penalty"] = self.evaluator._advanced_queen_penalty_eval(
+            board, is_white
+        )
         out["safe_mobility"] = self.evaluator._safe_mobility_eval(board, is_white)
         out["pawn_promotion_progress"] = self.evaluator._pawn_promotion_progress_eval(
             board, is_white
