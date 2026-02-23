@@ -35,6 +35,7 @@ class HeuristicEvaluator:
         self.mate_in_one_weight = 0.8
         self.position_mate_weight = 1.0
         self.knight_edge_penalty_weight = 0.04
+        self.advanced_queen_penalty_weight = 0.04
         self.pawn_promotion_weight = 0.03
         self.mobility_weight = 0.04
         self.safe_mobility_weight = 0.04
@@ -95,6 +96,7 @@ class HeuristicEvaluator:
         forks_eval = self._forks_eval(board, is_white)
         outpost_knight_eval = self._outpost_knight_eval(board, is_white)
         knight_edge_penalty_eval = self._knight_edge_penalty_eval(board, is_white)
+        advanced_queen_penalty_eval = self._advanced_queen_penalty_eval(board, is_white)
         space_advantage_eval = self._space_advantage_eval(board, is_white)
         backward_pawns_eval = self._backward_pawns_eval(board, is_white)
         squares_attacked_eval = self._squares_attacked_eval(board, is_white)
@@ -126,6 +128,7 @@ class HeuristicEvaluator:
             + self.fork_weight * forks_eval
             + self.outpost_knight_weight * outpost_knight_eval
             + self.knight_edge_penalty_weight * knight_edge_penalty_eval
+            + self.advanced_queen_penalty_weight * advanced_queen_penalty_eval
             + self.space_advantage_weight * space_advantage_eval
             + self.backward_pawns_weight * backward_pawns_eval
             + self.squares_attacked_weight * squares_attacked_eval
@@ -159,6 +162,7 @@ class HeuristicEvaluator:
             + self.fork_weight * abs(forks_eval)
             + self.outpost_knight_weight * abs(outpost_knight_eval)
             + self.knight_edge_penalty_weight * abs(knight_edge_penalty_eval)
+            + self.advanced_queen_penalty_weight * abs(advanced_queen_penalty_eval)
             + self.space_advantage_weight * abs(space_advantage_eval)
             + self.backward_pawns_weight * abs(backward_pawns_eval)
             + self.squares_attacked_weight * abs(squares_attacked_eval)
@@ -1339,3 +1343,45 @@ class HeuristicEvaluator:
             return 0.0
         # at most 2 knights can occupy these squares per side
         return float(np.clip(diff / 2.0, -1.0, 1.0))
+
+    def _advanced_queen_penalty_eval(
+        self, board_after: chess.Board, is_white: bool
+    ) -> float:
+        """Penalize advanced queens when there are still many pieces on board.
+
+        For each side, compute how advanced the queen is into the opponent's
+        half (0..1). Multiply by a piece-density factor (total pieces / 32)
+        so the penalty is stronger when the board is crowded. Return the
+        agent-perspective value (opp_penalty - our_penalty) clipped to [-1,1].
+        """
+
+        def queen_advance_for(color: bool) -> float:
+            qsq = board_after.king(color)  # placeholder
+            # find queen square for this color
+            qsq = None
+            for sq in board_after.pieces(chess.QUEEN, color):
+                qsq = sq
+                break
+            if qsq is None:
+                return 0.0
+            rank = chess.square_rank(qsq)  # 0..7
+            if color == chess.WHITE:
+                # advanced into opponent half ranks 4-8 (indices 4..7)
+                adv = max(0.0, (rank - 3) / 4.0)
+            else:
+                # for black, advanced when rank 3..0 (indices 3..0)
+                adv = max(0.0, (4 - rank) / 4.0)
+            return float(np.clip(adv, 0.0, 1.0))
+
+        total_pieces = len(board_after.piece_map())
+        piece_density = float(np.clip(total_pieces / 32.0, 0.0, 1.0))
+
+        white_pen = queen_advance_for(chess.WHITE) * piece_density
+        black_pen = queen_advance_for(chess.BLACK) * piece_density
+
+        our = white_pen if is_white else black_pen
+        opp = black_pen if is_white else white_pen
+        diff = opp - our
+        if diff == 0:
+            return 0.0
+        return float(np.clip(diff, -1.0, 1.0))
