@@ -595,15 +595,29 @@ class HeuristicEvaluator:
                 ]
             )
 
-            attackers_lost = min(len(attackers), len(defenders))
-            defenders_lost = min(len(attackers), len(defenders) + 1)
-
-            # Cost for attacker: Sum of k weakest attackers
-            attacker_loss = sum(attacker_values[:attackers_lost])
-
-            # Cost for defender: Target + Sum of k-1 weakest defenders
             target_val = PIECE_VALUES.get(piece.piece_type, 0)
-            defender_loss = target_val + sum(defender_values[: defenders_lost - 1])
+            defender_values = [target_val] + defender_values
+
+            attacker_loss = 0
+            defender_loss = 0
+            n_steps = min(len(attackers), len(defenders) + 1)
+            for step in range(n_steps):
+                step_attacker_loss = (
+                    attacker_values[step] if step < len(defenders) else 0
+                )
+                step_defender_loss = defender_values[step]
+                if step_attacker_loss > step_defender_loss:
+                    break
+                defender_loss += step_defender_loss
+                if step + 1 < n_steps:
+                    next_step_defender_loss = defender_values[step + 1]
+                    if next_step_defender_loss > step_attacker_loss:
+                        break
+                attacker_loss += step_attacker_loss
+
+            print(
+                f"Square {chess.square_name(sq)}, color {defender_color}: Attacker loss={attacker_loss}, Defender loss={defender_loss}"
+            )
 
             net_gain = defender_loss - attacker_loss
             if net_gain > 0:
