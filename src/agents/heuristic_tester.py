@@ -22,22 +22,23 @@ class HeuristicTester:
         # individual metric helpers
         out["material"] = self.evaluator._material_eval(board, is_white)
         out["mobility"] = self.evaluator._mobility_eval(board, is_white)
+        out["castling"] = self.evaluator._castling_bonus(board, is_white)
+        out["check"] = self.evaluator._check_eval(board, is_white)
+        out["center_control"] = self.evaluator._center_control_eval(board, is_white)
+        out["mate_against_us"] = self.evaluator._mate_in_one_eval(board, is_white)
+        out["position_mate"] = self.evaluator._position_mate_eval(board, is_white)
+        our_att, opp_att = self.evaluator._profitable_attack_eval(board, is_white)
+        out["our_profitable_attack"] = our_att
+        out["opp_profitable_attack"] = opp_att
         out["safe_mobility"] = self.evaluator._safe_mobility_eval(board, is_white)
         our_pe, opp_pe = self.evaluator._piece_exposed_eval(board, is_white)
         out["our_piece_exposed"] = our_pe
         out["opp_piece_exposed"] = opp_pe
-        mate_against_us = self.evaluator._mate_in_one_eval(board, is_white)
-        out["mate_against_us"] = mate_against_us
         out["pawn_promotion_progress"] = self.evaluator._pawn_promotion_progress_eval(
             board, is_white
         )
+        out["position_mate"] = self.evaluator._position_mate_eval(board, is_white)
         out["king_safety"] = self.evaluator._king_safety_eval(board, is_white)
-        out["castling"] = self.evaluator._castling_bonus(board, is_white)
-        out["check"] = self.evaluator._check_eval(board, is_white)
-        our_att, opp_att = self.evaluator._profitable_attack_eval(board, is_white)
-        out["our_profitable_attack"] = our_att
-        out["opp_profitable_attack"] = opp_att
-        out["center_control"] = self.evaluator._center_control_eval(board, is_white)
         out["undeveloped"] = self.evaluator._undeveloped_pieces_eval(board, is_white)
         out["doubled_pawns"] = self.evaluator._doubled_pawns_eval(board, is_white)
         out["isolated_pawns"] = self.evaluator._isolated_pawns_eval(board, is_white)
@@ -77,18 +78,15 @@ class HeuristicTester:
         # Print overall eval and decisiveness prominently
         eval_val = metrics.pop("eval", None)
         decisive = metrics.pop("decisive", None)
-        if isinstance(eval_val, float):
-            print(f"\nEvaluation: {eval_val:.4f}")
-        else:
-            print(f"\nEvaluation: {eval_val}")
-        if isinstance(decisive, float):
-            print(f"Decisive: {decisive:.4f}")
-        else:
-            print(f"Decisive: {decisive}")
+        fast_eval, _ = self.evaluator.evaluate_fast(board, is_white)
+
+        print(f"\nEvaluation: {eval_val:.4f}")
+        print(f"Fast Evaluation: {fast_eval:.4f}")
+        print(f"Decisive: {decisive:.4f}")
 
         print("\nMetrics:")
         # stable ordering for remaining metrics
-        for k in sorted(metrics.keys()):
+        for k in metrics:
             print(
                 f" - {k}: {metrics[k]:.4f}"
                 if isinstance(metrics[k], float)
