@@ -33,7 +33,7 @@ class HeuristicEvaluator:
         self.material_weight = 0.4
         self.attack_value_diff_weight = 0.2
         self.hanging_weight = 0.2
-        self.advanced_queen_penalty_weight = 0.1
+        self.advanced_queen_penalty_weight = 0.2
         self.opp_attack_weight = 0.04
         self.knight_edge_penalty_weight = 0.04
         self.pawn_promotion_weight = 0.03
@@ -1367,10 +1367,10 @@ class HeuristicEvaluator:
             rank = chess.square_rank(qsq)  # 0..7
             if color == chess.WHITE:
                 # advanced into opponent half ranks 4-8 (indices 4..7)
-                adv = max(0.0, (rank - 3) / 4.0)
+                adv = max(0.0, rank / 7.0)
             else:
                 # for black, advanced when rank 3..0 (indices 3..0)
-                adv = max(0.0, (4 - rank) / 4.0)
+                adv = max(0.0, (7 - rank) / 7.0)
             return float(np.clip(adv, 0.0, 1.0))
 
         total_pieces = len(board_after.piece_map())
