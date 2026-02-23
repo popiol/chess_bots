@@ -185,7 +185,7 @@ class HeuristicEvaluator:
         hanging_eval = self._hanging_pieces_eval(board, is_white)
 
         eval_val = (
-            self.material_weight * material_eval * 0.5
+            self.material_weight * material_eval
             + self.mobility_weight * mobility_eval
             + self.castling_weight * castling_eval
             + self.check_weight * check_eval
