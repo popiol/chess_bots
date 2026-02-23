@@ -32,23 +32,48 @@ class HeuristicAgent(TrainableAgent):
         results: List[PredictionResult] = []
         start = time.perf_counter()
 
+        # Count total legal moves first
+        num_legal = board.legal_moves.count()
+
         # Fast pre-evaluation: score all legal moves with evaluate_fast,
         # pick top-N candidates, then fully evaluate those with evaluate_position.
         fast_rows: list[tuple[chess.Move, float]] = []
+        fast_start = time.perf_counter()
         for move in board.legal_moves:
             b2 = board.copy()
-            b2.push(move)
+            try:
+                b2.push(move)
+            except Exception:
+                continue
             fast_eval, _ = self.evaluator.evaluate_fast(b2, not mover_is_white)
             fast_eval = -fast_eval
             fast_rows.append((move, fast_eval))
+        fast_end = time.perf_counter()
+
+        if not fast_rows:
+            duration = time.perf_counter() - start
+            fast_duration = fast_end - fast_start
+            logger.info(
+                "HeuristicAgent._predict: total=%.4fs fast=%.4fs full=%.4fs candidates=%d/%d",
+                duration,
+                fast_duration,
+                0.0,
+                0,
+                num_legal,
+            )
+            return []
 
         fast_rows.sort(key=lambda r: r[1], reverse=True)
         top_n = min(10, len(fast_rows))
         candidates = [r[0] for r in fast_rows[:top_n]]
 
+        full_start = time.perf_counter()
         for move in candidates:
             b2 = board.copy()
-            b2.push(move)
+            try:
+                b2.push(move)
+            except Exception:
+                continue
 
             # Full evaluation from opponent perspective then invert
             eval_val, decisive = self.evaluator.evaluate_position(
@@ -71,15 +96,23 @@ class HeuristicAgent(TrainableAgent):
                     decisive=float(decisive),
                 )
             )
+        full_end = time.perf_counter()
 
         # Sort best moves first (higher eval better for agent)
         results.sort(key=lambda r: r.evaluation, reverse=True)
 
         duration = time.perf_counter() - start
+        fast_duration = fast_end - fast_start
+        full_duration = full_end - full_start
+        num_candidates = len(results)
+
         logger.info(
-            "HeuristicAgent._predict: %.4fs (fast pre-eval + full eval) for %d candidates",
+            "HeuristicAgent._predict: total=%.4fs fast=%.4fs full=%.4fs candidates=%d/%d",
             duration,
-            board.legal_moves.count,
+            fast_duration,
+            full_duration,
+            num_candidates,
+            num_legal,
         )
 
         return results[: self.prediction_count]
