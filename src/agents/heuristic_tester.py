@@ -27,9 +27,6 @@ class HeuristicTester:
         out["center_control"] = self.evaluator._center_control_eval(board, is_white)
         out["mate_against_us"] = self.evaluator._mate_in_one_eval(board, is_white)
         out["position_mate"] = self.evaluator._position_mate_eval(board, is_white)
-        out["attack_value_diff"] = self.evaluator._attack_value_diff_eval(
-            board, is_white
-        )
         our_att, opp_att = self.evaluator._profitable_attack_eval(board, is_white)
         out["our_profitable_attack"] = our_att
         out["opp_profitable_attack"] = opp_att
@@ -49,7 +46,6 @@ class HeuristicTester:
         out["doubled_pawns"] = self.evaluator._doubled_pawns_eval(board, is_white)
         out["isolated_pawns"] = self.evaluator._isolated_pawns_eval(board, is_white)
         out["passed_pawns"] = self.evaluator._passed_pawns_eval(board, is_white)
-        out["hanging"] = self.evaluator._hanging_pieces_eval(board, is_white)
         out["bishop_pair"] = self.evaluator._bishop_pair_eval(board, is_white)
         out["rook_open_file"] = self.evaluator._rook_open_file_eval(board, is_white)
         out["endgame_king_activity"] = self.evaluator._endgame_king_activity_eval(
