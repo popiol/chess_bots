@@ -31,8 +31,8 @@ class HeuristicEvaluator:
         self.mate_in_one_weight = 0.8
         self.our_attack_weight = 0.7
         self.material_weight = 0.6
-        self.attack_value_diff_weight = 0.2
-        self.hanging_weight = 0.2
+        self.attack_value_diff_weight = 0.3
+        self.hanging_weight = 0.3
         self.advanced_queen_penalty_weight = 0.2
         self.opp_attack_weight = 0.04
         self.knight_edge_penalty_weight = 0.1
@@ -298,8 +298,8 @@ class HeuristicEvaluator:
         diff = our - opp
         if diff == 0:
             return 0.0
-        max_diff = 39.0
-        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_diff))
+        max_diff = 20.0
+        scaled = diff / max_diff
         return float(np.clip(scaled, -1.0, 1.0))
 
     def _mobility_eval(self, board_after: chess.Board, is_white: bool) -> float:
@@ -694,9 +694,9 @@ class HeuristicEvaluator:
         opp_gain = black_gain if is_white else white_gain
 
         # Scale both gains independently to [0,1]
-        max_gain = 15.0
-        scaled_our = float(np.clip(np.log1p(our_gain) / np.log1p(max_gain), 0.0, 1.0))
-        scaled_opp = float(np.clip(np.log1p(opp_gain) / np.log1p(max_gain), 0.0, 1.0))
+        max_gain = 20.0
+        scaled_our = float(np.clip(our_gain / max_gain, 0.0, 1.0))
+        scaled_opp = float(np.clip(opp_gain / max_gain, 0.0, 1.0))
 
         return scaled_our, scaled_opp
 
