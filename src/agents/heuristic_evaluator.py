@@ -29,10 +29,10 @@ class HeuristicEvaluator:
         """Initialize the evaluator with default weights for each metric."""
         self.position_mate_weight = 1.0
         self.mate_in_one_weight = 0.8
-        self.our_attack_weight = 0.6
-        self.material_weight = 0.4
-        self.attack_value_diff_weight = 0.25
-        self.hanging_weight = 0.25
+        self.our_attack_weight = 0.3
+        self.material_weight = 0.6
+        self.attack_value_diff_weight = 0.3
+        self.hanging_weight = 0.3
         self.advanced_queen_penalty_weight = 0.2
         self.opp_attack_weight = 0.04
         self.knight_edge_penalty_weight = 0.1
@@ -246,11 +246,11 @@ class HeuristicEvaluator:
             our_total = black_total
             opp_total = white_total
 
-        max_material = 39.0
+        max_material = 10.0
         diff = our_total - opp_total
         if diff == 0:
             return 0.0
-        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_material))
+        scaled = diff / max_material
         return float(np.clip(scaled, -1.0, 1.0))
 
     def _attack_value_diff_eval(
