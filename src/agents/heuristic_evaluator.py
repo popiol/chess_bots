@@ -29,8 +29,8 @@ class HeuristicEvaluator:
         """Initialize the evaluator with default weights for each metric."""
         self.position_mate_weight = 1.0
         self.mate_in_one_weight = 0.8
-        self.our_attack_weight = 0.7
-        self.material_weight = 0.6
+        self.our_attack_weight = 2
+        self.material_weight = 0.5
         self.attack_value_diff_weight = 0.2
         self.hanging_weight = 0.2
         self.advanced_queen_penalty_weight = 0.2
@@ -683,6 +683,10 @@ class HeuristicEvaluator:
                 if fast:
                     break
 
+            print(
+                f"Square {chess.square_name(sq)}: attacker_loss={attacker_loss}, defender_loss={defender_loss}"
+            )
+
             net_gain = defender_loss - attacker_loss
             if net_gain > 0:
                 if attacker_color == chess.WHITE:
@@ -692,6 +696,8 @@ class HeuristicEvaluator:
 
         our_gain = white_gain if is_white else black_gain
         opp_gain = black_gain if is_white else white_gain
+
+        print(f"Total gains: our_gain={our_gain}, opp_gain={opp_gain}")
 
         # Scale both gains independently to [0,1]
         max_gain = 20.0
