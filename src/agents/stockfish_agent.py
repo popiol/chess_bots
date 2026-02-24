@@ -86,7 +86,7 @@ class StockfishAgent(TrainableAgent):
 
         assert self._strength is not None
 
-        eval_count = min(1 + int(self._strength * 4 - 0.5), len(legal_moves))
+        eval_count = min(1 + int((1 - self._strength) * 4 - 0.5), len(legal_moves))
         top_uci: set[str] = set()
         self._sf.set_fen_position(fen)
         try:
