@@ -468,10 +468,10 @@ class AgentRunner:
 def main() -> None:
     classpath_map = {
         # "NeuralNetworkAgent": "src.agents.neural_network_agent.NeuralNetworkAgent",
-        # "StockfishAgent": "src.agents.stockfish_agent.StockfishAgent",
+        "StockfishAgent": "src.agents.stockfish_agent.StockfishAgent",
         # "HeuristicAgent": "src.agents.heuristic_agent.HeuristicAgent",
         # "DecisionTreeAgent": "src.agents.decision_tree_agent.DecisionTreeAgent",
-        "ComboAgent": "src.agents.combo_agent.ComboAgent",
+        # "ComboAgent": "src.agents.combo_agent.ComboAgent",
     }
     available_classnames = list(classpath_map.keys())
     base_url = "https://playbullet.gg"
