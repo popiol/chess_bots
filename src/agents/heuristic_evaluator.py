@@ -894,8 +894,14 @@ class HeuristicEvaluator:
                 val = float(PIECE_VALUES.get(piece.piece_type, 0))
                 if piece.color == chess.WHITE:
                     white_hanging += val
+                    print(
+                        f"White hanging piece: {piece.piece_type} on {chess.square_name(sq)} value {val}"
+                    )
                 else:
                     black_hanging += val
+                    print(
+                        f"Black hanging piece: {piece.piece_type} on {chess.square_name(sq)} value {val}"
+                    )
 
         our_hanging = white_hanging if is_white else black_hanging
         opp_hanging = black_hanging if is_white else white_hanging
@@ -904,7 +910,7 @@ class HeuristicEvaluator:
         if diff == 0:
             return 0.0
         max_hanging = 20.0
-        scaled = np.sign(diff) * (np.log1p(abs(diff)) / np.log1p(max_hanging))
+        scaled = diff / max_hanging
         return float(np.clip(scaled, -1.0, 1.0))
 
     def _bishop_pair_eval(self, board_after: chess.Board, is_white: bool) -> float:
