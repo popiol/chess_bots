@@ -30,9 +30,9 @@ class HeuristicEvaluator:
         self.position_mate_weight = 1.0
         self.mate_in_one_weight = 0.8
         self.our_attack_weight = 0.3
-        self.material_weight = 0.6
-        self.attack_value_diff_weight = 0.3
-        self.hanging_weight = 0.3
+        self.material_weight = 0.7
+        self.attack_value_diff_weight = 0.2
+        self.hanging_weight = 0.2
         self.advanced_queen_penalty_weight = 0.2
         self.opp_attack_weight = 0.04
         self.knight_edge_penalty_weight = 0.1
