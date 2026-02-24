@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
+import random
 from typing import List
-
-import chess
 
 from src.agents.heuristic_agent import HeuristicAgent
 from src.agents.stockfish_agent import StockfishAgent
@@ -24,25 +23,27 @@ class ComboAgent(TrainableAgent):
         # delegate agents (lazy-init)
         self._heuristic_agent: HeuristicAgent | None = None
         self._stockfish_agent: StockfishAgent | None = None
+        # preference ratio in [0,1] used for any probabilistic selection
+        self._stockfish_ratio: float | None = None
+
+    def snapshot_state(self) -> dict:
+        state = super().snapshot_state()
+        state["stockfish_ratio"] = self._stockfish_ratio
+        return state
+
+    def load_state(self, state: dict) -> None:
+        super().load_state(state)
+        if "stockfish_ratio" in state:
+            self._stockfish_ratio = state["stockfish_ratio"]
+        else:
+            self._stockfish_ratio = random.random()
 
     def _predict(self, fen: str, our_squares: List[str]) -> List[PredictionResult]:
-        board = chess.Board(fen)
-        ply = len(board.move_stack)
-        # If ply is even -> it's move 1,3,5... (heuristic); if odd -> stockfish
-        use_heuristic = (ply % 2) == 0
+        assert self._stockfish_ratio is not None
 
-        # Lazy init delegate agents and keep prediction_count in sync
-        if use_heuristic:
-            if self._heuristic_agent is None:
-                self._heuristic_agent = HeuristicAgent(
-                    self.username,
-                    self.password,
-                    self.email,
-                    self.classpath,
-                    self._chess_client,
-                )
-            return self._heuristic_agent._predict(fen, our_squares)
-        else:
+        use_stockfish = random.random() < self._stockfish_ratio
+
+        if use_stockfish:
             if self._stockfish_agent is None:
                 self._stockfish_agent = StockfishAgent(
                     self.username,
@@ -51,4 +52,25 @@ class ComboAgent(TrainableAgent):
                     self.classpath,
                     self._chess_client,
                 )
+            logger.debug(
+                "ComboAgent: selected Stockfish (ratio=%.3f)",
+                self._stockfish_ratio,
+                extra={"username": self.username},
+            )
             return self._stockfish_agent._predict(fen, our_squares)
+
+        # Use heuristic agent
+        if self._heuristic_agent is None:
+            self._heuristic_agent = HeuristicAgent(
+                self.username,
+                self.password,
+                self.email,
+                self.classpath,
+                self._chess_client,
+            )
+        logger.debug(
+            "ComboAgent: selected Heuristic (ratio=%.3f)",
+            self._stockfish_ratio,
+            extra={"username": self.username},
+        )
+        return self._heuristic_agent._predict(fen, our_squares)
