@@ -15,15 +15,8 @@ GUEST_PROBABILITY = 0.25
 
 
 class CustomizableAgent(Agent, ABC):
-    def __init__(
-        self,
-        username: str,
-        password: str,
-        email: str,
-        classpath: str,
-        web_client,
-    ) -> None:
-        super().__init__(username, password, email, classpath, web_client)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
         self._guest = False
         self._registered = False
         self._stage = "auth"

@@ -34,9 +34,21 @@ class ComboAgent(TrainableAgent):
         # Lazy init delegate agents and keep prediction_count in sync
         if use_heuristic:
             if self._heuristic_agent is None:
-                self._heuristic_agent = HeuristicAgent()
+                self._heuristic_agent = HeuristicAgent(
+                    self.username,
+                    self.password,
+                    self.email,
+                    self.classpath,
+                    self._chess_client,
+                )
             return self._heuristic_agent._predict(fen, our_squares)
         else:
             if self._stockfish_agent is None:
-                self._stockfish_agent = StockfishAgent()
+                self._stockfish_agent = StockfishAgent(
+                    self.username,
+                    self.password,
+                    self.email,
+                    self.classpath,
+                    self._chess_client,
+                )
             return self._stockfish_agent._predict(fen, our_squares)
