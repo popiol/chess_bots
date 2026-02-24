@@ -62,6 +62,19 @@ class StockfishAgent(TrainableAgent):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._sf = _get_shared_stockfish()
+        self._strength: float | None = None
+
+    def snapshot_state(self) -> dict:
+        state = super().snapshot_state()
+        state["strength"] = self._strength
+        return state
+
+    def load_state(self, state: dict) -> None:
+        super().load_state(state)
+        if "strength" in state:
+            self._strength = state["strength"]
+        else:
+            self._strength = random.random()
 
     def _predict(self, fen: str, our_squares: List[str]) -> List[PredictionResult]:
         assert our_squares, "Our squares must be provided"
@@ -71,7 +84,9 @@ class StockfishAgent(TrainableAgent):
         legal_moves = list(board.legal_moves)
         candidates = []
 
-        eval_count = min(self.prediction_count, len(legal_moves))
+        assert self._strength is not None
+
+        eval_count = min(1 + int(self._strength * 4 - 0.5), len(legal_moves))
         top_uci: set[str] = set()
         self._sf.set_fen_position(fen)
         try:
