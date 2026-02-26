@@ -54,7 +54,11 @@ class StockfishAgent(TrainableAgent):
         else:
             self._strength = random.random()
         assert self._strength is not None
-        self._sf = _get_shared_stockfish(1 + round(self._strength))
+        depth = 1 + round(self._strength * 2)
+        self._sf = _get_shared_stockfish(depth)
+        logger.info(
+            "StockfishAgent loaded with strength=%.3f (depth=%d)", self._strength, depth
+        )
 
     def _predict(self, fen: str, our_squares: List[str]) -> List[PredictionResult]:
         assert our_squares, "Our squares must be provided"
