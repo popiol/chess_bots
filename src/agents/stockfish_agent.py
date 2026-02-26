@@ -14,46 +14,23 @@ from src.agents.trainable_agent import PredictionResult, TrainableAgent
 logger = logging.getLogger(__name__)
 
 
-# Module-level shared Stockfish instance (lazy-initialized).
-_SHARED_STOCKFISH: Stockfish | None = None
+# Module-level shared Stockfish instances per depth (lazy-initialized).
+# Key: depth -> Stockfish instance
+_SHARED_STOCKFISH_BY_DEPTH: dict[int, Stockfish] = {}
 
 
-def _get_shared_stockfish() -> Stockfish:
-    global _SHARED_STOCKFISH
-    if _SHARED_STOCKFISH is None:
-        _SHARED_STOCKFISH = Stockfish(
-            path="stockfish", depth=1, parameters={"Threads": 2, "Hash": 8}
+def _get_shared_stockfish(depth: int = 1) -> Stockfish:
+    """Return a shared Stockfish instance for the requested depth.
+
+    Creates and caches a Stockfish instance per depth so multiple depths can
+    coexist without killing/recreating a single global engine.
+    """
+    global _SHARED_STOCKFISH_BY_DEPTH
+    if depth not in _SHARED_STOCKFISH_BY_DEPTH:
+        _SHARED_STOCKFISH_BY_DEPTH[depth] = Stockfish(
+            path="stockfish", depth=depth, parameters={"Threads": 2, "Hash": 8}
         )
-    return _SHARED_STOCKFISH
-
-
-def shutdown_shared_stockfish() -> None:
-    """Terminate and drop the shared Stockfish instance so memory is released."""
-    global _SHARED_STOCKFISH
-    if _SHARED_STOCKFISH is None:
-        return
-    try:
-        _SHARED_STOCKFISH.send_quit_command()
-    except Exception:
-        logger.exception(
-            "Exception while calling send_quit_command on shared Stockfish"
-        )
-        try:
-            proc = _SHARED_STOCKFISH._stockfish
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-            try:
-                proc.kill()
-            except Exception:
-                pass
-        except Exception:
-            logger.exception(
-                "Exception while terminating internal Stockfish subprocess"
-            )
-    finally:
-        _SHARED_STOCKFISH = None
+    return _SHARED_STOCKFISH_BY_DEPTH[depth]
 
 
 class StockfishAgent(TrainableAgent):
@@ -61,7 +38,8 @@ class StockfishAgent(TrainableAgent):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._sf = _get_shared_stockfish()
+        # Stockfish instance is initialized in load_state (depends on strength)
+        self._sf: Stockfish | None = None
         self._strength: float | None = None
 
     def snapshot_state(self) -> dict:
@@ -75,6 +53,8 @@ class StockfishAgent(TrainableAgent):
             self._strength = state["strength"]
         else:
             self._strength = random.random()
+        assert self._strength is not None
+        self._sf = _get_shared_stockfish(1 + int(self._strength))
 
     def _predict(self, fen: str, our_squares: List[str]) -> List[PredictionResult]:
         assert our_squares, "Our squares must be provided"
