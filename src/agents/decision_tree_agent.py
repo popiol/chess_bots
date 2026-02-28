@@ -106,7 +106,6 @@ class DecisionTreeAgent(TrainableAgent):
         doubled = h._doubled_pawns_eval(board, is_white)
         isolated = h._isolated_pawns_eval(board, is_white)
         passed = h._passed_pawns_eval(board, is_white)
-        hanging = h._hanging_pieces_eval(board, is_white)
         bishop_pair = h._bishop_pair_eval(board, is_white)
         rook_open_file = h._rook_open_file_eval(board, is_white)
         endgame_king_activity = h._endgame_king_activity_eval(board, is_white)
@@ -131,7 +130,6 @@ class DecisionTreeAgent(TrainableAgent):
                 doubled,
                 isolated,
                 passed,
-                hanging,
                 bishop_pair,
                 rook_open_file,
                 endgame_king_activity,

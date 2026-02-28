@@ -112,7 +112,7 @@ class PlayableAgent(CustomizableAgent):
                     return
 
             if valid:
-                logger.info(
+                logger.debug(
                     "Move successful %s -> %s",
                     self._last_from_square,
                     self._last_to_square,
@@ -191,7 +191,7 @@ class PlayableAgent(CustomizableAgent):
                     )
             self._last_calculation_time = time.time()
 
-            logger.info(
+            logger.debug(
                 "Time remaining: %d seconds, move %d, allocated: %.2f seconds",
                 self._time_remaining,
                 self._moves_made + 1,
@@ -211,7 +211,7 @@ class PlayableAgent(CustomizableAgent):
 
         # If no pending move yet, decide one and return immediately (will execute later)
         if self._pending_move is None:
-            logger.info("Deciding move", extra={"username": self.username})
+            logger.debug("Deciding move", extra={"username": self.username})
             move = self._decide_move(self._current_fen)
             self._pending_move = move
 
@@ -222,7 +222,7 @@ class PlayableAgent(CustomizableAgent):
         if self._moves_made > 0 and (time.time() - self._thinking_start_time) < min(
             1.5, max(0.0, 0.5 + random.gauss(0, 0.5))
         ):
-            logger.info("Pending move", extra={"username": self.username})
+            logger.debug("Pending move", extra={"username": self.username})
             return
 
         # Enough thinking time elapsed — clear pending state and proceed
@@ -262,7 +262,7 @@ class PlayableAgent(CustomizableAgent):
         self._last_decisive = decisive
 
         # Make move
-        logger.info(
+        logger.debug(
             "Attempting move %s -> %s",
             from_square,
             to_square,
