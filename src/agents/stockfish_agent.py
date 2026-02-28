@@ -116,7 +116,7 @@ class StockfishAgent(TrainableAgent):
             )
 
         duration = time.time() - start
-        logger.info(
+        logger.debug(
             "StockfishAgent._predict: moves_considered=%d samples=%d moves_returned=%d time=%.3fs",
             len(candidates),
             eval_count,
