@@ -498,7 +498,7 @@ def main() -> None:
         log_path,
         when="midnight",
         interval=1,
-        backupCount=14,
+        backupCount=1,
         encoding="utf-8",
         utc=True,
     )
