@@ -26,6 +26,13 @@ LOG_DIR = Path("logs")
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class RunnerConfig:
+    create_interval_seconds: float = 60.0  # How often to try creating agents
+    start_interval_seconds: float = 10.0  # How often to try starting sessions
+    max_active_sessions: int = 9
+
+
 # Types we don't want to traverse for deep-size calculations
 BLACKLIST = (
     types.ModuleType,
@@ -68,13 +75,6 @@ class UsernameFilter(logging.Filter):
         if not hasattr(record, "username"):
             record.username = "-"
         return True
-
-
-@dataclass(frozen=True)
-class RunnerConfig:
-    create_interval_seconds: float = 60.0  # How often to try creating agents
-    start_interval_seconds: float = 10.0  # How often to try starting sessions
-    max_active_sessions: int = 9
 
 
 class AgentRunner:
