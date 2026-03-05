@@ -53,19 +53,20 @@ class AdaptiveStockfishAgent(StockfishAgent):
         sf = _get_shared_stockfish(depth)
 
         # Determine how many top moves to ask for (fewer when strength is high)
-        eval_count = max(1, min(1 + int((1 - strength) * 4 - 0.5), len(legal_moves)))
+        eval_count = max(1, min(1 + int((1 - strength) * 10 - 0.5), len(legal_moves)))
         top_uci: set[str] = set()
         sf.set_fen_position(fen)
         top = sf.get_top_moves(eval_count)
         for item in top:
-            if isinstance(item.get("Move"), str):
-                assert isinstance(item["Move"], str)
-                top_uci.add(item["Move"])
+            assert isinstance(item["Move"], str)
+            top_uci.add(item["Move"])
 
-        for move in legal_moves:
+        for rank, move in enumerate(legal_moves):
             uci = move.uci()
+            ranks_scaled = rank / len(legal_moves)
+            multiplier = (1 - strength) * ranks_scaled + strength * (1 - ranks_scaled)
             if uci in top_uci:
-                eval_val = random.gauss(0.2, 0.2)
+                eval_val = random.gauss(0.1 * multiplier, 0.2)
                 decisive = random.random()
             else:
                 eval_val = -1
