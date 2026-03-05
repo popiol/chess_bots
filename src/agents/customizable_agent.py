@@ -227,7 +227,17 @@ class CustomizableAgent(Agent, ABC):
             )
 
         if chosen_index is None:
+            logger.info(
+                "No suitable matchmaking queue found, picking default time control",
+                extra={"username": self.username},
+            )
             chosen_index = self._pick_time_control()
+        else:
+            logger.info(
+                "Found suitable matchmaking queue, selecting time control index=%d",
+                chosen_index,
+                extra={"username": self.username},
+            )
 
         logger.info(
             "Selecting time control index=%s",
