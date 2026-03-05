@@ -46,10 +46,7 @@ class AdaptiveStockfishAgent(StockfishAgent):
 
         converted = self._convert_stockfish_eval(raw_cp)
         perspective = converted if board.turn == chess.WHITE else -converted
-        strength = -perspective
-        logger.info(
-            "raw_cp=%s converted=%.3f strength=%.3f", raw_cp, converted, strength
-        )
+        strength = 0.5 - perspective * 0.5
 
         # Choose depth based on strength (match StockfishAgent mapping)
         depth = 1 + round(strength * 2)
