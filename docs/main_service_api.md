@@ -47,6 +47,26 @@ orchestration, history, ratings, and profiles. Paths are prefixed by the configu
   - Note: `websocket_url` is a path (e.g., `/ws/game/v1/<game_id>`). Clients should prepend
     their current scheme/host.
 
+### Ensure Guest
+- `POST /guests/ensure`
+- Auth: not required
+- Cookies:
+  - Reads: `guest_id` (optional), `guest_number` (optional)
+  - Sets if missing: `guest_id` (httponly, secure when behind HTTPS), `guest_number` (public)
+- Returns 200: `{ "guest_id": "<uuid>" }`
+- Notes:
+  - Creates or preserves cookies used by the client and is idempotent.
+  - The Main Service will call the Identity Service (`POST /auth/sessions/guest`) to upsert a server-side session with detected visitor metadata (`country`, `device`). If that call fails, cookies are still set and a Redis mapping is maintained for frontend lookups.
+  - Useful for guest flows prior to joining matchmaking or when initializing anonymous user state.
+
+### List Matchmaking Queues
+- `GET /matchmaking/queue`
+- Auth: not required
+- Query: none
+- Returns 200 (`AllQueuesResponse`):
+  - `groups: list` of objects `{ time_control_initial: int, time_control_increment: int, mode: string, total: int }`
+  - Each group represents a distinct time-control + mode queue and `total` is the number of players currently waiting in that group.
+
 ---
 
 ## Game Orchestration
@@ -175,6 +195,23 @@ orchestration, history, ratings, and profiles. Paths are prefixed by the configu
   - `rating_category: string|null` (`bullet` | `blitz` | `rapid` | `classical`)
 - Response: `200 RatingHistoryResponse` with `history` entries ordered newest first.
 
+### Leaderboard
+- `GET /users/ranking`
+- Auth: not required
+- Query:
+  - `rating_category: string` (`bullet` | `blitz` | `rapid`) (required)
+  - `limit: int` (default 50, max 500)
+  - `offset: int` (default 0)
+- Response: `200 LeaderboardResponse` with:
+  - `rating_category: string`
+  - `total_players: int` (number of players with a rating in the category)
+  - `limit: int`, `offset: int`
+  - `entries: list` of `{ user_id: UUID, username: string|null, rating: int, rank: int }`
+- Notes:
+  - Returns a paginated, 1-based ranked list where `rank = 1` is the top player.
+  - Usernames are resolved from the Identity Service and may be `null` if a user account is missing.
+  - Consider adding short TTL caching on this endpoint to reduce DB load for frequent leaderboard queries.
+
 ### User Stats
 - `GET /users/{user_id}/stats`
 - Auth: required
@@ -298,7 +335,7 @@ orchestration, history, ratings, and profiles. Paths are prefixed by the configu
   `time_control_increment: int`, `rating_category: string`, `starting_fen: string`,
   `mode: GameMode`, `status: GameStatus`, `outcome: GameOutcome|null`,
   `termination_reason: string|null`, `move_list: string|null`, `final_fen: string|null`,
-  `move_count: int`, `duration_seconds: float|null`, `white_time_remaining: float|null`,
+  `current_fen: string|null`, `last_move: string|null`, `move_count: int`, `duration_seconds: float|null`, `white_time_remaining: float|null`,
   `black_time_remaining: float|null`, `created_at: datetime`, `started_at: datetime|null`,
   `ended_at: datetime|null`, `white_rating_before: int|null`, `black_rating_before: int|null`,
   `white_rating_after: int|null`, `black_rating_after: int|null`

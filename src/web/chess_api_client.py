@@ -163,6 +163,26 @@ class ChessAPIClient(ChessClient):
             return True
         return False
 
+    def get_matchmaking_queues(self) -> list[dict]:
+        """Fetch matchmaking queue groups from the main service.
+
+        Returns a list of groups where each group is expected to be a dict
+        containing `time_control_initial`, `time_control_increment`, `mode`, and `total`.
+        """
+        url = f"{self.base_url}/api/matchmaking/queue"
+        try:
+            r = self._session.get(url, timeout=5)
+            r.raise_for_status()
+            body = r.json()
+            if isinstance(body, dict) and "groups" in body:
+                return body.get("groups") or []
+            if isinstance(body, list):
+                return body
+            return []
+        except Exception:
+            logger.exception("Failed to fetch matchmaking queues")
+            return []
+
     # --- game / state ---
     def is_postgame_visible(self) -> bool:
         info = self._game_state()

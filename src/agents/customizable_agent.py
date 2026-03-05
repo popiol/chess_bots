@@ -209,13 +209,33 @@ class CustomizableAgent(Agent, ABC):
         current_time = time.time()
         if current_time - self._last_stage_change_time < 1.0:
             return
-        index = self._pick_time_control()
+        chosen_index: int | None = None
+        time_controls = [(60, 0), (120, 1), (180, 0), (180, 2), (600, 0)]
+        time_control_indices = {(i, j): idx for idx, (i, j) in enumerate(time_controls)}
+        desired_mode = "casual" if self._guest else "rated"
+        try:
+            groups = self._chess_client.get_matchmaking_queues()
+            waiting = [g for g in groups if g["total"] and g["mode"] == desired_mode]
+            if waiting:
+                g = random.choice(waiting)
+                t0 = int(g["time_control_initial"])
+                t1 = int(g["time_control_increment"])
+                chosen_index = time_control_indices.get((t0, t1))
+        except Exception:
+            logger.exception(
+                "Failed to fetch matchmaking queues", extra={"username": self.username}
+            )
+
+        if chosen_index is None:
+            chosen_index = self._pick_time_control()
+
         logger.info(
             "Selecting time control index=%s",
-            index,
+            chosen_index,
             extra={"username": self.username},
         )
-        self._chess_client.select_time_control(index)
+
+        self._chess_client.select_time_control(chosen_index)
         self._stage = "queue"
         self._last_stage_change_time = current_time
 

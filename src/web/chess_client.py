@@ -118,3 +118,12 @@ class ChessClient(ABC):
     @abstractmethod
     def is_post_login_ready(self) -> bool:
         raise NotImplementedError
+
+    @abstractmethod
+    def get_matchmaking_queues(self) -> list[dict]:
+        """Return a list of matchmaking queue groups.
+
+        Each group should be a dict containing `time_control_initial`,
+        `time_control_increment`, `mode`, and `total`.
+        """
+        raise NotImplementedError
