@@ -56,7 +56,8 @@ class AdaptiveStockfishAgent(StockfishAgent):
         eval_count = max(1, min(1 + int((1 - strength) * 10 - 0.5), len(legal_moves)))
 
         logger.info(
-            "converted=%.3f perspective=%.3f strength=%.3f depth=%d eval_count=%d",
+            "turn=%s converted=%.3f perspective=%.3f strength=%.3f depth=%d eval_count=%d",
+            "white" if board.turn == chess.WHITE else "black",
             converted,
             perspective,
             strength,
