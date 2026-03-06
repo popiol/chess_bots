@@ -48,20 +48,23 @@ class AdaptiveStockfishAgent(StockfishAgent):
         perspective = converted if board.turn == chess.WHITE else -converted
         strength = min(1, 1 - perspective)
 
-        logger.info(
-            "converted=%.3f perspective=%.3f strength=%.3f",
-            converted,
-            perspective,
-            strength,
-            extra={"username": self.username},
-        )
-
         # Choose depth based on strength (match StockfishAgent mapping)
         depth = 1 + round(strength * 2)
         sf = _get_shared_stockfish(depth)
 
         # Determine how many top moves to ask for (fewer when strength is high)
         eval_count = max(1, min(1 + int((1 - strength) * 10 - 0.5), len(legal_moves)))
+
+        logger.info(
+            "converted=%.3f perspective=%.3f strength=%.3f depth=%d eval_count=%d",
+            converted,
+            perspective,
+            strength,
+            depth,
+            eval_count,
+            extra={"username": self.username},
+        )
+
         top_uci: set[str] = set()
         sf.set_fen_position(fen)
         top = sf.get_top_moves(eval_count)
