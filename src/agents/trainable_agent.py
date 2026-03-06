@@ -186,7 +186,7 @@ class TrainableAgent(PlayableAgent):
         if started_now:
             return None
 
-        self._expand_analysis()
+        # self._expand_analysis()
         return None
 
     def _expand_analysis(self) -> None:
