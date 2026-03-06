@@ -74,8 +74,16 @@ class AdaptiveStockfishAgent(StockfishAgent):
 
         for rank, move in enumerate(legal_moves):
             uci = move.uci()
-            ranks_scaled = rank / len(legal_moves)
+            ranks_scaled = rank / eval_count
             multiplier = (1 - strength) * ranks_scaled + strength * (1 - ranks_scaled)
+            logger.info(
+                "move=%s rank=%d ranks_scaled=%.3f multiplier=%.3f",
+                uci,
+                rank,
+                ranks_scaled,
+                multiplier,
+                extra={"username": self.username},
+            )
             if uci in top_uci:
                 eval_val = random.gauss(0.1 * multiplier, 0.2)
                 decisive = random.random()
