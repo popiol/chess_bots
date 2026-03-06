@@ -65,26 +65,29 @@ class AdaptiveStockfishAgent(StockfishAgent):
             extra={"username": self.username},
         )
 
-        top_uci: set[str] = set()
+        top_uci: dict[str, int] = {}
         sf.set_fen_position(fen)
         top = sf.get_top_moves(eval_count)
-        for item in top:
+        for rank, item in enumerate(top):
             assert isinstance(item["Move"], str)
-            top_uci.add(item["Move"])
+            top_uci[item["Move"]] = rank
 
-        for rank, move in enumerate(legal_moves):
+        for move in legal_moves:
             uci = move.uci()
-            ranks_scaled = rank / eval_count
-            multiplier = (1 - strength) * ranks_scaled + strength * (1 - ranks_scaled)
-            logger.info(
-                "move=%s rank=%d ranks_scaled=%.3f multiplier=%.3f",
-                uci,
-                rank,
-                ranks_scaled,
-                multiplier,
-                extra={"username": self.username},
-            )
             if uci in top_uci:
+                rank = top_uci[uci]
+                ranks_scaled = rank / eval_count
+                multiplier = (1 - strength) * ranks_scaled + strength * (
+                    1 - ranks_scaled
+                )
+                logger.info(
+                    "move=%s rank=%d ranks_scaled=%.3f multiplier=%.3f",
+                    uci,
+                    rank,
+                    ranks_scaled,
+                    multiplier,
+                    extra={"username": self.username},
+                )
                 eval_val = random.gauss(0.1 * multiplier, 0.2)
                 decisive = random.random()
             else:
