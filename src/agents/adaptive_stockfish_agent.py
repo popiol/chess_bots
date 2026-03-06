@@ -54,16 +54,6 @@ class AdaptiveStockfishAgent(StockfishAgent):
         # Determine how many top moves to ask for (fewer when strength is high)
         eval_count = max(1, min(1 + int((1 - strength) * 10 - 0.5), len(legal_moves)))
 
-        logger.info(
-            "turn=%s converted=%.3f strength=%.3f depth=%d eval_count=%d",
-            "white" if board.turn == chess.WHITE else "black",
-            converted,
-            strength,
-            depth,
-            eval_count,
-            extra={"username": self.username},
-        )
-
         top_uci: dict[str, int] = {}
         sf.set_fen_position(fen)
         top = sf.get_top_moves(eval_count)
@@ -78,14 +68,6 @@ class AdaptiveStockfishAgent(StockfishAgent):
                 ranks_scaled = rank / eval_count
                 multiplier = (1 - strength) * ranks_scaled + strength * (
                     1 - ranks_scaled
-                )
-                logger.info(
-                    "move=%s rank=%d ranks_scaled=%.3f multiplier=%.3f",
-                    uci,
-                    rank,
-                    ranks_scaled,
-                    multiplier,
-                    extra={"username": self.username},
                 )
                 eval_val = random.gauss(0.1 * multiplier, 0.2)
                 decisive = random.random()

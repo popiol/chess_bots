@@ -86,7 +86,7 @@ class CustomizableAgent(Agent, ABC):
         else:
             self._guest = random.random() < GUEST_PROBABILITY
         self._registered = bool(state.get("registered", False))
-        self._time_control_weights = {0: 5, 1: 4, 2: 3, 3: 2, 4: 1}
+        self._time_control_weights = {0: 4, 1: 3, 2: 2, 3: 1, 4: 0}
         # self._time_control_weights = state.get("time_control_weights", {})
         # if not self._time_control_weights:
         #     self._time_control_weights = self._random_time_control_weights()
