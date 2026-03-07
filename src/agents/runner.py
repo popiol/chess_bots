@@ -185,6 +185,8 @@ class AgentRunner:
                 return
             random.shuffle(candidates)
 
+            logger.info("Candidates: %s", candidates)
+
             # Ensure sufficient free memory before starting a new session
             min_bytes = 1000 * 1024 * 1024  # 1000 MB
             free_bytes = psutil.virtual_memory().available
