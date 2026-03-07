@@ -161,6 +161,9 @@ class AgentRunner:
 
             logger.info(
                 "desired_mode=%s waiting_players=%d active_sessions=%d",
+                desired_mode,
+                sum((g.get("total") or 0 for g in waiting)),
+                self._manager.active_session_count(),
             )
 
             if (
