@@ -177,6 +177,8 @@ class AgentRunner:
                 logger.info("Max active sessions reached, not starting a new session")
                 return
 
+            logger.info("desired_mode=%s", desired_mode)
+
             guest_filter: bool | None = None
             if desired_mode is not None:
                 guest_filter = desired_mode == "casual"
