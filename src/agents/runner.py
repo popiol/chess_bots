@@ -152,8 +152,7 @@ class AgentRunner:
             # the max_active_sessions limit and start a session for that mode.
             desired_mode: str | None = None
             groups = self._match_client.get_matchmaking_queues()
-            logger.info("Matchmaking queues: %s", groups)
-            waiting = [g for g in groups if (g.get("total") or 0) > 0]
+            waiting = [g for g in groups if g.get("total")]
             logger.info("Matchmaking queues with waiting players: %s", waiting)
             if waiting:
                 grp = random.choice(waiting)
@@ -171,15 +170,18 @@ class AgentRunner:
                 and self._manager.active_session_count()
                 >= self._config.max_active_sessions
             ):
+                logger.info("Max active sessions reached, not starting a new session")
                 return
             self._last_start_time = current_time
 
             usernames = self._manager.list_known_agents(classpaths=self._classpaths)
             if not usernames:
+                logger.info("No known agents to start")
                 return
             active_usernames = self._manager.active_session_usernames()
             candidates = [name for name in usernames if name not in active_usernames]
             if not candidates:
+                logger.info("No available agents to start")
                 return
             random.shuffle(candidates)
 
