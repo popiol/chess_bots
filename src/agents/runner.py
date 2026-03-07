@@ -5,6 +5,7 @@ import gc
 import logging
 import random
 import sys
+import threading
 import time
 import types
 from dataclasses import dataclass
@@ -101,8 +102,17 @@ class AgentRunner:
         self._memory_failures = 0
         # Track last global snapshot time to rate-limit verbose agent snapshots
         self._last_agent_snapshot_time: float = 0.0
-        # persistent client used for polling matchmaking queues
+        # Matchmaking queue polling: a background thread periodically
+        # fetches queue data so the main loop never blocks on the API call.
         self._match_client = self._manager._client_factory.create_client()
+        self._match_lock = threading.Lock()
+        self._match_queues: list[dict] = []
+        self._match_poll_interval = 5.0  # seconds between polls
+        self._match_stop = threading.Event()
+        self._match_thread = threading.Thread(
+            target=self._poll_matchmaking, daemon=True, name="matchmaking-poller"
+        )
+        self._match_thread.start()
 
     def main_loop(self) -> None:
         while True:
@@ -150,12 +160,13 @@ class AgentRunner:
                 return
 
             desired_mode: str | None = None
-            # groups = self._match_client.get_matchmaking_queues()
-            # waiting = [g for g in groups if g.get("total")]
-            # logger.info("Matchmaking queues with waiting players: %s", waiting)
-            # if waiting:
-            #     grp = random.choice(waiting)
-            #     desired_mode = grp.get("mode")
+            with self._match_lock:
+                groups = list(self._match_queues)
+            waiting = [g for g in groups if g.get("total")]
+            logger.info("Matchmaking queues with waiting players: %s", waiting)
+            if waiting:
+                grp = random.choice(waiting)
+                desired_mode = grp.get("mode")
 
             if (
                 desired_mode is None
@@ -166,10 +177,19 @@ class AgentRunner:
                 return
             self._last_start_time = current_time
 
-            usernames = self._manager.list_known_agents(classpaths=self._classpaths)
+            guest_filter: bool | None = None
+            if desired_mode is not None:
+                guest_filter = desired_mode == "casual"
+            usernames = self._manager.list_known_agents(
+                classpaths=self._classpaths, guest=guest_filter
+            )
             active_usernames = self._manager.active_session_usernames()
             candidates = [name for name in usernames if name not in active_usernames]
-            random.shuffle(candidates)
+            if not candidates:
+                logger.info(
+                    "No candidate agent to start for desired_mode=%s", desired_mode
+                )
+                return
 
             # Ensure sufficient free memory before starting a new session
             min_bytes = 1000 * 1024 * 1024  # 1000 MB
@@ -263,41 +283,13 @@ class AgentRunner:
                 return
 
             self._memory_failures = 0
-            started = False
-            attempts = 0
-            max_attepts = 1
-            for username in candidates:
-                attempts += 1
-                agent = self._manager.start_session(username)
-                if desired_mode is not None and attempts < max_attepts:
-                    want_guest = desired_mode == "casual"
-                    if not hasattr(agent, "_guest"):
-                        logger.info(
-                            "Agent missing _guest attribute, ending session",
-                            extra={"username": username},
-                        )
-                        self._manager.end_session(username)
-                        continue
-                    got_guest = getattr(agent, "_guest", None)
-                    if got_guest != want_guest:
-                        logger.info(
-                            "Agent mode mismatch (want_guest=%s, got _guest=%s), ending session",
-                            want_guest,
-                            got_guest,
-                            extra={"username": username},
-                        )
-                        self._manager.end_session(username)
-                        continue
-                started = True
-                logger.info("Session started", extra={"username": username})
-                active_count = self._manager.active_session_count()
-                logger.info(
-                    "Active sessions: %d", active_count, extra={"username": username}
-                )
-                break
-
-            if not started:
-                logger.info("No candidate agent matched desired_mode=%s", desired_mode)
+            username = random.choice(candidates)
+            self._manager.start_session(username)
+            logger.info("Session started", extra={"username": username})
+            active_count = self._manager.active_session_count()
+            logger.info(
+                "Active sessions: %d", active_count, extra={"username": username}
+            )
         except PlaywrightTimeoutError:
             self._start_failures += 1
             logger.warning(
@@ -378,8 +370,21 @@ class AgentRunner:
 
     def close(self) -> None:
         """Close resources owned by the runner."""
+        self._match_stop.set()
+        self._match_thread.join(timeout=10)
         if self._match_client is not None:
             self._match_client.close()
+
+    def _poll_matchmaking(self) -> None:
+        """Background thread: periodically fetch matchmaking queues."""
+        while not self._match_stop.is_set():
+            try:
+                groups = self._match_client.get_matchmaking_queues()
+                with self._match_lock:
+                    self._match_queues = groups
+            except Exception:
+                logger.exception("Error polling matchmaking queues")
+            self._match_stop.wait(self._match_poll_interval)
 
     def _log_python_memory_breakdown(
         self,

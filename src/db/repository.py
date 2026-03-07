@@ -99,11 +99,20 @@ class AgentRepository:
                 last_session_end=agent.last_session_end,
             )
 
-    def list_agent_usernames(self, classpaths: list[str] | None = None) -> list[str]:
+    def list_agent_usernames(
+        self,
+        classpaths: list[str] | None = None,
+        guest: bool | None = None,
+    ) -> list[str]:
         with self._sessionmaker() as session:
             query = session.query(AgentMetadata.username)
             if classpaths:
                 query = query.filter(AgentMetadata.classpath.in_(classpaths))
+            if guest is not None:
+                # Filter on the "guest" key inside the JSON state column.
+                # PostgreSQL: state->>'guest' returns text, so compare to
+                # the JSON text representation of the boolean.
+                query = query.filter(AgentMetadata.state["guest"].as_boolean() == guest)
             rows = query.all()
             return [row[0] for row in rows]
 
