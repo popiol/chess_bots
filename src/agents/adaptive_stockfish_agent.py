@@ -20,6 +20,13 @@ class AdaptiveStockfishAgent(StockfishAgent):
         super().__init__(*args, **kwargs)
         self._sf = _get_shared_stockfish()
 
+    def snapshot_state(self) -> dict:
+        state = super().snapshot_state()
+        return state
+
+    def load_state(self, state: dict) -> None:
+        super().load_state(state)
+
     def _predict(self, fen: str, our_squares: List[str]) -> List[PredictionResult]:
         """Adaptive Stockfish agent: choose strength from position evaluation."""
         assert our_squares, "Our squares must be provided"

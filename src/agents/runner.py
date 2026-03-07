@@ -325,28 +325,11 @@ class AgentRunner:
             self._start_failures = 0
 
     def _run_active_sessions(self) -> None:
-        should_snapshot = time.time() - self._last_agent_snapshot_time >= 60
-
         for idx, (username, agent) in enumerate(
             self._manager.active_sessions_items(), start=1
         ):
             start = time.time()
             try:
-                if should_snapshot:
-                    game_id = None
-                    client = agent._chess_client
-                    game_id = getattr(client, "_game_id", None)
-
-                    logger.info(
-                        "idx=%d stage=%s moves_made=%s game_id=%s",
-                        idx,
-                        getattr(agent, "_stage", None),
-                        getattr(agent, "_moves_made", None),
-                        game_id,
-                        extra={"username": username},
-                    )
-                    self._last_agent_snapshot_time = time.time()
-
                 agent.run()
             except Exception:
                 cnt = self._consecutive_failures.get(username, 0) + 1
