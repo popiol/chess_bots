@@ -185,8 +185,6 @@ class AgentRunner:
                 return
             random.shuffle(candidates)
 
-            logger.info("Candidates: %s", candidates)
-
             # Ensure sufficient free memory before starting a new session
             min_bytes = 1000 * 1024 * 1024  # 1000 MB
             free_bytes = psutil.virtual_memory().available
@@ -310,7 +308,45 @@ class AgentRunner:
                 break
 
             if not started:
-                logger.info("No candidate agent matched desired_mode=%s", desired_mode)
+                if desired_mode is None:
+                    logger.info(
+                        "No candidate agent matched desired_mode=%s", desired_mode
+                    )
+                else:
+                    logger.info(
+                        "No existing candidate matched desired_mode=%s; creating new agents until match",
+                        desired_mode,
+                    )
+                    # Keep creating agents until we find one with the desired mode.
+                    # This loops until a created agent's `_guest` attribute matches
+                    # the desired mode (casual -> _guest=True). If creation keeps
+                    # producing mismatched agents this will continue; that's the
+                    # intended behavior to satisfy waiting players.
+                    while True:
+                        new_username = self._create_random_agent()
+                        agent = self._manager.start_session(new_username)
+                        if not hasattr(agent, "_guest"):
+                            logger.info(
+                                "Created agent missing _guest attribute, ending session",
+                                extra={"username": new_username},
+                            )
+                            self._manager.end_session(new_username)
+                            continue
+                        got_guest = getattr(agent, "_guest", None)
+                        want_guest = desired_mode == "casual"
+                        if got_guest == want_guest:
+                            logger.info(
+                                "Session started", extra={"username": new_username}
+                            )
+                            started = True
+                            break
+                        logger.info(
+                            "Created agent mode mismatch (want_guest=%s, got _guest=%s), ending session",
+                            want_guest,
+                            got_guest,
+                            extra={"username": new_username},
+                        )
+                        self._manager.end_session(new_username)
         except PlaywrightTimeoutError:
             self._start_failures += 1
             logger.warning(
