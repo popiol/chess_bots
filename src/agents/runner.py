@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class RunnerConfig:
     create_interval_seconds: float = 60.0  # How often to try creating agents
     start_interval_seconds: float = 10.0  # How often to try starting sessions
-    max_active_sessions: int = 9
+    max_active_sessions: int = 8
 
 
 # Types we don't want to traverse for deep-size calculations
