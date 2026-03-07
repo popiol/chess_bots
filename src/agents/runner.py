@@ -148,22 +148,14 @@ class AgentRunner:
                 < self._config.start_interval_seconds
             ):
                 return
-            # If there are waiting players in matchmaking queues, ignore
-            # the max_active_sessions limit and start a session for that mode.
-            desired_mode: str | None = None
-            groups = self._match_client.get_matchmaking_queues()
-            waiting = [g for g in groups if g.get("total")]
-            logger.info("Matchmaking queues with waiting players: %s", waiting)
-            if waiting:
-                grp = random.choice(waiting)
-                desired_mode = grp.get("mode")
 
-            logger.info(
-                "desired_mode=%s waiting_players=%d active_sessions=%d",
-                desired_mode,
-                sum((g.get("total") or 0 for g in waiting)),
-                self._manager.active_session_count(),
-            )
+            desired_mode: str | None = None
+            # groups = self._match_client.get_matchmaking_queues()
+            # waiting = [g for g in groups if g.get("total")]
+            # logger.info("Matchmaking queues with waiting players: %s", waiting)
+            # if waiting:
+            #     grp = random.choice(waiting)
+            #     desired_mode = grp.get("mode")
 
             if (
                 desired_mode is None
