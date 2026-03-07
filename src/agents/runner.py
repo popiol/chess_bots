@@ -273,7 +273,7 @@ class AgentRunner:
             self._memory_failures = 0
             started = False
             attempts = 0
-            max_attepts = 2
+            max_attepts = 1
             for username in candidates:
                 attempts += 1
                 agent = self._manager.start_session(username)
