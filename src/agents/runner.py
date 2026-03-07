@@ -277,7 +277,7 @@ class AgentRunner:
             for username in candidates:
                 attempts += 1
                 agent = self._manager.start_session(username)
-                if desired_mode is not None and attempts <= max_attepts:
+                if desired_mode is not None and attempts < max_attepts:
                     want_guest = desired_mode == "casual"
                     if not hasattr(agent, "_guest"):
                         logger.info(
