@@ -145,7 +145,7 @@ class AgentRunner:
         if self._manager.active_session_count() >= self._config.max_active_sessions:
             return
         known_agents = self._manager.list_known_agents(classpaths=self._classpaths)
-        if len(known_agents) >= self._config.max_active_sessions:
+        if len(known_agents) >= 2 * self._config.max_active_sessions:
             return
         self._last_create_time = current_time
         self._create_random_agent()
@@ -159,6 +159,7 @@ class AgentRunner:
             ):
                 return
 
+            self._last_start_time = current_time
             desired_mode: str | None = None
             with self._match_lock:
                 groups = list(self._match_queues)
@@ -175,7 +176,6 @@ class AgentRunner:
             ):
                 logger.info("Max active sessions reached, not starting a new session")
                 return
-            self._last_start_time = current_time
 
             guest_filter: bool | None = None
             if desired_mode is not None:
@@ -196,67 +196,12 @@ class AgentRunner:
             free_bytes = psutil.virtual_memory().available
             logger.info("Available memory: %d bytes", free_bytes)
             if free_bytes < min_bytes:
-                try:
-                    proc = psutil.Process()
-                    my_rss = proc.memory_info().rss
-                    children_rss = sum(
-                        (c.memory_info().rss for c in proc.children(recursive=True)), 0
-                    )
-                    procs = []
-                    for p in psutil.process_iter(
-                        ["pid", "name", "memory_info", "cmdline", "username"]
-                    ):
-                        try:
-                            rss = p.info["memory_info"].rss
-                        except Exception:
-                            rss = 0
-                        pid = p.info.get("pid")
-                        name = p.info.get("name")
-                        cmdline = " ".join(p.info.get("cmdline") or [])
-                        user = p.info.get("username")
-                        procs.append((rss, pid, name, user, cmdline))
-                    procs.sort(reverse=True)
-                    top5 = procs[:5]
-                    top_str_parts = []
-                    for rss, pid, name, user, cmdline in top5:
-                        # truncate cmdline to avoid overly long logs
-                        cmd_short = (
-                            (cmdline[:200] + "...")
-                            if cmdline and len(cmdline) > 200
-                            else (cmdline or "")
-                        )
-                        top_str_parts.append(
-                            f"{pid}/{name}:{rss} user={user} cmd={cmd_short}"
-                        )
-                    top_str = ", ".join(top_str_parts)
-                    # additional overall memory stats
-                    try:
-                        vm = psutil.virtual_memory()
-                        swap = psutil.swap_memory()
-                        top_str = (
-                            f"vm_percent={vm.percent} swap_percent={swap.percent} | "
-                            + top_str
-                        )
-                    except Exception:
-                        pass
-                except Exception:
-                    my_rss = None
-                    children_rss = None
-                    top_str = "diagnostics-unavailable"
-
-                # Capture a Python-level memory breakdown to identify large objects.
-                # Use deep sizes (may be slow) to get accurate retained sizes.
-                self._log_python_memory_breakdown(deep=True)
-
                 self._memory_failures += 1
                 logger.warning(
-                    "Insufficient free memory to start session (count=%d): available=%d, need >=%d bytes; python_rss=%s children_rss=%s top_processes=%s",
+                    "Insufficient free memory to start session (count=%d): available=%d, need >=%d bytes",
                     self._memory_failures,
                     free_bytes,
                     min_bytes,
-                    my_rss,
-                    children_rss,
-                    top_str,
                 )
                 # If memory failures mount up, attempt to restart the shared engine
                 if self._memory_failures >= 10:
