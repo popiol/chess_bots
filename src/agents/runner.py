@@ -175,14 +175,8 @@ class AgentRunner:
             self._last_start_time = current_time
 
             usernames = self._manager.list_known_agents(classpaths=self._classpaths)
-            if not usernames:
-                logger.info("No known agents to start")
-                return
             active_usernames = self._manager.active_session_usernames()
             candidates = [name for name in usernames if name not in active_usernames]
-            if not candidates:
-                logger.info("No available agents to start")
-                return
             random.shuffle(candidates)
 
             # Ensure sufficient free memory before starting a new session
