@@ -101,6 +101,8 @@ class AgentRunner:
         self._memory_failures = 0
         # Track last global snapshot time to rate-limit verbose agent snapshots
         self._last_agent_snapshot_time: float = 0.0
+        # persistent client used for polling matchmaking queues
+        self._match_client = self._manager._client_factory.create_client()
 
     def main_loop(self) -> None:
         while True:
@@ -146,7 +148,20 @@ class AgentRunner:
                 < self._config.start_interval_seconds
             ):
                 return
-            if self._manager.active_session_count() >= self._config.max_active_sessions:
+            # If there are waiting players in matchmaking queues, ignore
+            # the max_active_sessions limit and start a session for that mode.
+            desired_mode: str | None = None
+            groups = self._match_client.get_matchmaking_queues()
+            waiting = [g for g in groups if (g.get("total") or 0) > 0]
+            if waiting:
+                grp = random.choice(waiting)
+                desired_mode = grp.get("mode")
+
+            if (
+                desired_mode is None
+                and self._manager.active_session_count()
+                >= self._config.max_active_sessions
+            ):
                 return
             self._last_start_time = current_time
 
@@ -157,7 +172,7 @@ class AgentRunner:
             candidates = [name for name in usernames if name not in active_usernames]
             if not candidates:
                 return
-            username = random.choice(candidates)
+            random.shuffle(candidates)
 
             # Ensure sufficient free memory before starting a new session
             min_bytes = 1000 * 1024 * 1024  # 1000 MB
@@ -214,7 +229,7 @@ class AgentRunner:
 
                 # Capture a Python-level memory breakdown to identify large objects.
                 # Use deep sizes (may be slow) to get accurate retained sizes.
-                self._log_python_memory_breakdown(username=username, deep=True)
+                self._log_python_memory_breakdown(deep=True)
 
                 self._memory_failures += 1
                 logger.warning(
@@ -225,7 +240,6 @@ class AgentRunner:
                     my_rss,
                     children_rss,
                     top_str,
-                    extra={"username": username},
                 )
                 # If memory failures mount up, attempt to restart the shared engine
                 if self._memory_failures >= 10:
@@ -233,16 +247,13 @@ class AgentRunner:
                         logger.warning(
                             "Memory failures reached %d; restarting shared Stockfish",
                             self._memory_failures,
-                            extra={"username": username},
                         )
                         logger.info(
                             "Restarted shared Stockfish to reclaim memory",
-                            extra={"username": username},
                         )
                     except Exception:
                         logger.exception(
                             "Failed to restart shared Stockfish",
-                            extra={"username": username},
                         )
                     finally:
                         # reset counter after attempting a restart
@@ -255,12 +266,38 @@ class AgentRunner:
                 return
 
             self._memory_failures = 0
-            self._manager.start_session(username)
-            logger.info("Session started", extra={"username": username})
-            active_count = self._manager.active_session_count()
-            logger.info(
-                "Active sessions: %d", active_count, extra={"username": username}
-            )
+            started = False
+            for username in candidates:
+                agent = self._manager.start_session(username)
+                if desired_mode is not None:
+                    want_guest = desired_mode == "casual"
+                    if not hasattr(agent, "_guest"):
+                        logger.info(
+                            "Agent missing _guest attribute, ending session",
+                            extra={"username": username},
+                        )
+                        self._manager.end_session(username)
+                        continue
+                    got_guest = getattr(agent, "_guest", None)
+                    if got_guest != want_guest:
+                        logger.info(
+                            "Agent mode mismatch (want_guest=%s, got _guest=%s), ending session",
+                            want_guest,
+                            got_guest,
+                            extra={"username": username},
+                        )
+                        self._manager.end_session(username)
+                        continue
+                started = True
+                logger.info("Session started", extra={"username": username})
+                active_count = self._manager.active_session_count()
+                logger.info(
+                    "Active sessions: %d", active_count, extra={"username": username}
+                )
+                break
+
+            if not started:
+                logger.info("No candidate agent matched desired_mode=%s", desired_mode)
         except PlaywrightTimeoutError:
             self._start_failures += 1
             logger.warning(
@@ -289,9 +326,8 @@ class AgentRunner:
             try:
                 if should_snapshot:
                     game_id = None
-                    client = getattr(agent, "_chess_client", None)
-                    if client is not None:
-                        game_id = getattr(client, "_game_id", None)
+                    client = agent._chess_client
+                    game_id = getattr(client, "_game_id", None)
 
                     logger.info(
                         "idx=%d stage=%s moves_made=%s game_id=%s",
@@ -356,6 +392,11 @@ class AgentRunner:
 
                 # Force garbage collection and log memory usage
                 gc.collect()
+
+    def close(self) -> None:
+        """Close resources owned by the runner."""
+        if self._match_client is not None:
+            self._match_client.close()
 
     def _log_python_memory_breakdown(
         self,
@@ -529,6 +570,7 @@ def main() -> None:
         else:
             runner.main_loop()
     finally:
+        runner.close()
         client_factory.close()
 
 
