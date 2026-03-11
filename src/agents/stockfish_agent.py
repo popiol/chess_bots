@@ -139,6 +139,6 @@ class StockfishAgent(TrainableAgent):
             return 0.0
 
         # Logarithmic scaling used to reduce impact of large values
-        max_cp = 1000.0
+        max_cp = 10000.0
         val = np.sign(raw) * (np.log1p(abs(raw)) / np.log1p(max_cp))
         return float(np.clip(val, -1.0, 1.0))
