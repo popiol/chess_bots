@@ -59,7 +59,7 @@ class AdaptiveStockfishAgent(StockfishAgent):
         sf = _get_shared_stockfish(depth)
 
         # Determine how many top moves to ask for (fewer when strength is high)
-        eval_count = max(1, min(1 + int((1 - strength) * 5 - 0.5), len(legal_moves)))
+        eval_count = max(1, min(1 + int((1 - strength) * 10 - 0.5), len(legal_moves)))
 
         logger.info(
             "turn=%s converted=%.3f strength=%.3f depth=%d eval_count=%d",
